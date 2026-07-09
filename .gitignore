@@ -30,3 +30,6 @@ Thumbs.db
 # editor
 .vscode/
 .idea/
+
+# Local Netlify folder
+.netlify
