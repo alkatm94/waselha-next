@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useMemo, useState, type ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import { Calculator, CheckCircle2, ChevronDown, ClipboardCheck, ExternalLink, Globe2, Menu, MessageCircle, PackageCheck, Search, SearchCheck, Send, ShieldCheck, Store, Truck, X } from "lucide-react";
+import { ProductLinkImporter, type ImportedProduct } from "@/components/ProductLinkImporter";
 
 type Country = "china" | "japan" | "usa" | "other";
 type Currency = "USD" | "CNY" | "JPY" | "SAR";
@@ -65,7 +66,10 @@ export default function HomePage() {
   const [productName, setProductName] = useState("");
   const [country, setCountry] = useState<Country>("china");
   const [currency, setCurrency] = useState<Currency>("USD");
-  const [price, setPrice] = useState(400);
+  const [price, setPrice] = useState<number | string>(400);
+  const [productStoreName, setProductStoreName] = useState("");
+  const [productImage, setProductImage] = useState("");
+  const [priceHelper, setPriceHelper] = useState("");
   const [weight, setWeight] = useState(3);
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
@@ -86,13 +90,36 @@ export default function HomePage() {
     window.open(`https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`, "_blank");
   }
 
+  function handleImportedProduct(product: ImportedProduct) {
+    setProductUrl(product.originalUrl);
+    setProductName(product.title);
+    setProductStoreName(product.storeName);
+    setProductImage(product.image || "");
+    setCurrency(product.currency);
+    setCountry("china");
+
+    if (typeof product.price === "number" && product.price > 0) {
+      setPrice(product.price);
+      setPriceHelper("");
+    } else {
+      setPrice("");
+      setPriceHelper("تعذر جلب السعر تلقائيًا، أدخل سعر المنتج يدويًا");
+    }
+
+    window.requestAnimationFrame(() => {
+      document.querySelector("#calculator")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      if (!product.price) {
+        window.setTimeout(() => document.querySelector<HTMLInputElement>("#product-price-input")?.focus(), 650);
+      }
+    });
+  }
   function openPlatformWhatsApp(platformName: string) {
     const message = `السلام عليكم، أرغب بطلب منتج من منصة ${platformName}. سأرسل لكم رابط المنتج للمراجعة وإرسال السعر النهائي.`;
     window.open(`https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`, "_blank");
   }
 
   function openWhatsApp() {
-    const message = `السلام عليكم، أرغب بطلب منتج من الخارج عبر وصلها لي.\n\nالاسم: ${customerName || "غير محدد"}\nالجوال: ${customerPhone || "غير محدد"}\nاسم المنتج: ${productName || "غير محدد"}\nرابط المنتج: ${productUrl || "غير مرفق"}\nدولة الطلب: ${countryLabels[country]}\nسعر المنتج: ${price} ${currencyLabels[currency]}\nالوزن التقريبي: ${weight} KG\nالسعر التقديري الظاهر لي: ${formatSar(estimate.total)} ريال\n\nأرغب بمراجعة الرابط وإرسال السعر النهائي.`;
+    const message = `السلام عليكم، أرغب بطلب منتج من الخارج عبر وصلها لي.\n\nالاسم: ${customerName || "غير محدد"}\nالجوال: ${customerPhone || "غير محدد"}\nاسم المنتج: ${productName || "غير محدد"}\nرابط المنتج: ${productUrl || "غير مرفق"}\nدولة الطلب: ${countryLabels[country]}\nسعر المنتج: ${price || "غير محدد"} ${currencyLabels[currency]}\nالمتجر: ${productStoreName || "غير محدد"}\nصورة المنتج: ${productImage || "غير متاحة"}\nالوزن التقريبي: ${weight} KG\nالسعر التقديري الظاهر لي: ${formatSar(estimate.total)} ريال\n\nأرغب بمراجعة الرابط وإرسال السعر النهائي.`;
     window.open(`https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`, "_blank");
   }
 
@@ -127,6 +154,8 @@ export default function HomePage() {
         </div>
       </section>
 
+      <ProductLinkImporter onUseProduct={handleImportedProduct} />
+
       <section id="platforms" className="bg-[#F7F8FA] px-5 py-16">
         <div className="mx-auto max-w-7xl">
           <SectionHeading eyebrow="منصات مدعومة" title="اطلب من أشهر المنصات العالمية" desc="أرسل لنا رابط المنتج من أي منصة، ونراجع لك السعر والتوفر قبل الشراء." />
@@ -144,11 +173,11 @@ export default function HomePage() {
           <div className="mt-8 grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
             <div className="rounded-lg border border-slate-900/10 bg-white p-5 shadow-xl shadow-slate-900/5 md:p-7">
               <div className="grid gap-4 md:grid-cols-2">
-                <Field label="رابط المنتج" className="md:col-span-2"><input value={productUrl} onChange={(e) => setProductUrl(e.target.value)} placeholder="ضع رابط المنتج هنا" className="input" /></Field>
+                <Field label="رابط المنتج" className="md:col-span-2">{productUrl ? <div className="flex flex-col gap-3 rounded-lg border border-slate-900/10 bg-[#F7F8FA] p-3 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-sm font-bold text-[#0F172A]">تم حفظ رابط المنتج الكامل</p>{productStoreName && <p className="text-xs font-bold text-[#64748B]">{productStoreName}</p>}</div><div className="flex gap-2"><a href={productUrl} target="_blank" rel="noopener noreferrer" className="inline-flex h-11 items-center justify-center gap-2 rounded-full border border-[#D6A84F]/35 bg-white px-4 text-sm font-bold text-[#8A641C] transition hover:border-[#D6A84F]"><ExternalLink className="h-4 w-4" />فتح رابط المنتج</a><button type="button" onClick={() => { setProductUrl(""); setProductStoreName(""); setProductImage(""); }} className="h-11 rounded-full border border-slate-900/10 px-4 text-sm font-bold text-[#64748B]">تغيير</button></div></div> : <input value={productUrl} onChange={(e) => setProductUrl(e.target.value)} placeholder="ضع رابط المنتج هنا" className="input" />}</Field>
                 <Field label="اسم المنتج"><input value={productName} onChange={(e) => setProductName(e.target.value)} placeholder="مثال: ساعة، قطعة سيارة، جهاز" className="input" /></Field>
                 <Field label="دولة الطلب"><select value={country} onChange={(e) => setCountry(e.target.value as Country)} className="input"><option value="china">الصين</option><option value="japan">اليابان</option><option value="usa">أمريكا</option><option value="other">دولة أخرى</option></select></Field>
                 <Field label="العملة"><select value={currency} onChange={(e) => setCurrency(e.target.value as Currency)} className="input"><option value="USD">دولار USD</option><option value="CNY">يوان CNY</option><option value="JPY">ين JPY</option><option value="SAR">ريال SAR</option></select></Field>
-                <Field label="سعر المنتج"><input type="number" value={price} onChange={(e) => setPrice(Number(e.target.value))} className="input" /></Field>
+                <Field label="سعر المنتج"><input id="product-price-input" type="number" value={price} onChange={(e) => { setPrice(e.target.value); if (Number(e.target.value) > 0) setPriceHelper(""); }} className="input" />{priceHelper && <p className="mt-2 text-xs font-bold text-[#9f741b]">{priceHelper}</p>}</Field>
                 <Field label="الوزن التقريبي"><input type="number" value={weight} onChange={(e) => setWeight(Number(e.target.value))} className="input" /></Field>
                 <Field label="الاسم"><input value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="اختياري" className="input" /></Field>
                 <Field label="رقم الجوال"><input value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} placeholder="اختياري" className="input" /></Field>
@@ -295,6 +324,10 @@ function Field({ label, children, className = "" }: { label: string; children: R
 function PriceLine({ label, value, strong = false }: { label: string; value: number; strong?: boolean }) { return <div className={strong ? "flex items-center justify-between rounded-lg border border-[#F2C66D]/20 bg-white/5 px-4 py-3" : "flex items-center justify-between border-t border-white/10 pt-3"}><span className={strong ? "font-bold text-white" : "font-semibold text-white/60"}>{label}</span><b className={strong ? "text-[#F2C66D]" : "text-white"}>{formatSar(value)} ريال</b></div>; }
 function PriceNoteLine({ label, value }: { label: string; value: string }) { return <div className="flex items-center justify-between border-t border-white/10 pt-3"><span className="font-semibold text-white/60">{label}</span><b className="text-white">{value}</b></div>; }
 function FAQ({ q, a }: { q: string; a: string }) { return <details className="group border-t border-black/10 py-5"><summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-right text-lg font-bold">{q}<ChevronDown className="h-5 w-5 shrink-0 transition group-open:rotate-180" /></summary><p className="mt-4 text-sm font-semibold leading-8 text-[#64748B]">{a}</p></details>; }
+
+
+
+
 
 
 
