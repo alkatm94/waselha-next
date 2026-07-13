@@ -1,4 +1,4 @@
-﻿import type { Metadata } from "next";
+﻿import type { Metadata, Viewport } from "next";
 import Script from "next/script";
 import { IBM_Plex_Sans_Arabic } from "next/font/google";
 import "./globals.css";
@@ -11,11 +11,33 @@ const ibmArabic = IBM_Plex_Sans_Arabic({
 });
 
 export const metadata: Metadata = {
-  title: "وصلها لي | اطلب من الخارج بثقة",
+  metadataBase: new URL("https://waselhali.com"),
+  title: "وصلها لي | نشتري لك من الصين ونوصلها إلى السعودية",
   description:
-    "خدمة وسيط طلب من الخارج للسعودية. أرسل رابط المنتج، نراجع السعر، نرسل عرض نهائي، ونساعدك في الشراء والمتابعة.",
+    "أرسل رابط المنتج من الصين أو المتاجر العالمية، واحصل على تكلفة تقديرية وخدمة شراء وشحن إلى السعودية عبر وصلها لي.",
+  alternates: {
+    canonical: "/",
+  },
+  openGraph: {
+    title: "وصلها لي | نشتري لك من الصين ونوصلها إلى السعودية",
+    description: "خدمة شراء وشحن مستقلة من المتاجر العالمية إلى السعودية. أرسل الرابط ونراجع لك التكلفة قبل الشراء.",
+    url: "/",
+    siteName: "وصلها لي",
+    locale: "ar_SA",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "وصلها لي | نشتري لك من الصين ونوصلها إلى السعودية",
+    description: "أرسل رابط المنتج واحصل على تكلفة تقديرية وخدمة شراء وشحن إلى السعودية.",
+  },
 };
 
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+};
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="ar" dir="rtl" suppressHydrationWarning>
@@ -37,4 +59,6 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     </html>
   );
 }
+
+
 
