@@ -12,7 +12,6 @@
     "db:push:postgres": "prisma db push --schema prisma/schema.postgres.prisma"
   },
   "dependencies": {
-    "@netlify/database": "^1.1.0",
     "@prisma/client": "^6.1.0",
     "lucide-react": "^0.468.0",
     "next": "^15.1.2",
