@@ -1,12 +1,13 @@
-﻿export type StoreId = "taobao" | "1688" | "aliexpress" | "alibaba" | "goofish";
-export type SupportedCurrency = "USD" | "CNY";
+﻿export type StoreId = "taobao" | "1688" | "aliexpress" | "alibaba" | "goofish" | "amazon" | "ebay";
+export type SupportedCurrency = "USD" | "CNY" | "JPY" | "EUR";
+export type StoreCountry = "china" | "japan" | "usa" | "europe";
 
 export type ProductStore = {
   id: StoreId;
   name: string;
   icon: string;
   defaultCurrency: SupportedCurrency;
-  defaultCountry: "china";
+  defaultCountry: StoreCountry;
   domains: string[];
   shortDomains: string[];
 };
@@ -72,6 +73,24 @@ export const SUPPORTED_STORES: ProductStore[] = [
     domains: ["goofish.com", "xianyu.taobao.com", "2.taobao.com"],
     shortDomains: ["m.tb.cn"],
   },
+  {
+    id: "amazon",
+    name: "Amazon",
+    icon: "AM",
+    defaultCurrency: "USD",
+    defaultCountry: "usa",
+    domains: ["amazon.com", "amazon.sa", "amazon.ae", "amazon.co.uk", "amazon.de", "amazon.fr", "amazon.it", "amazon.es", "amazon.co.jp"],
+    shortDomains: ["amzn.to"],
+  },
+  {
+    id: "ebay",
+    name: "eBay",
+    icon: "EB",
+    defaultCurrency: "USD",
+    defaultCountry: "usa",
+    domains: ["ebay.com", "ebay.co.uk", "ebay.de", "ebay.fr"],
+    shortDomains: [],
+  },
 ];
 
 export function normalizeProductUrl(value: string) {
@@ -103,11 +122,12 @@ export function detectProductStore(value: string): StoreDetection {
     const domains = [...store.domains, ...store.shortDomains];
     const matched = domains.some((domain) => hostname === domain || hostname.endsWith(`.${domain}`));
     if (matched) {
+      const localizedStore = localizeStoreByHostname(store, hostname);
       return {
         ok: true,
         originalUrl,
         normalizedUrl,
-        store,
+        store: localizedStore,
         isShortened: store.shortDomains.some((domain) => hostname === domain || hostname.endsWith(`.${domain}`)),
       };
     }
@@ -117,7 +137,7 @@ export function detectProductStore(value: string): StoreDetection {
 }
 
 export function resolveCurrency(store: ProductStore, extractedCurrency?: string): SupportedCurrency {
-  if (extractedCurrency === "USD" || extractedCurrency === "CNY") return extractedCurrency;
+  if (["USD", "CNY", "JPY", "EUR"].includes(String(extractedCurrency))) return extractedCurrency as SupportedCurrency;
   return store.defaultCurrency;
 }
 
@@ -125,8 +145,27 @@ export function getStoreById(id: StoreId) {
   return SUPPORTED_STORES.find((store) => store.id === id);
 }
 
+
+function localizeStoreByHostname(store: ProductStore, hostname: string): ProductStore {
+  if (store.id === "amazon" && hostname.endsWith("amazon.co.jp")) {
+    return { ...store, defaultCountry: "japan", defaultCurrency: "JPY" };
+  }
+
+  if (store.id === "amazon" && ["amazon.de", "amazon.fr", "amazon.it", "amazon.es"].some((domain) => hostname === domain || hostname.endsWith(`.${domain}`))) {
+    return { ...store, defaultCountry: "europe", defaultCurrency: "EUR" };
+  }
+
+  if (store.id === "ebay" && ["ebay.de", "ebay.fr"].some((domain) => hostname === domain || hostname.endsWith(`.${domain}`))) {
+    return { ...store, defaultCountry: "europe", defaultCurrency: "EUR" };
+  }
+
+  return store;
+}
 function isSafeHttpUrl(url: URL) {
   if (!["http:", "https:"].includes(url.protocol)) return false;
   if (url.username || url.password) return false;
   return true;
 }
+
+
+

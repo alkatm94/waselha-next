@@ -1,5 +1,5 @@
 ﻿import { NextResponse } from "next/server";
-import { detectProductStore, resolveCurrency, type StoreId, type SupportedCurrency } from "@/lib/product-links";
+import { detectProductStore, resolveCurrency, type StoreCountry, type StoreId, type SupportedCurrency } from "@/lib/product-links";
 
 type ProductMetadata = {
   originalUrl: string;
@@ -11,6 +11,7 @@ type ProductMetadata = {
   image?: string;
   price?: number;
   currency: SupportedCurrency;
+  country: StoreCountry;
 };
 
 const REQUEST_TIMEOUT_MS = 7000;
@@ -37,17 +38,18 @@ export async function POST(request: Request) {
       normalizedUrl: detection.normalizedUrl,
       storeId: detection.store.id,
       storeName: detection.store.name,
-      title: `منتج من ${detection.store.name}`,
+      title: "اسم المنتج غير متاح تلقائيًا",
       currency: detection.store.defaultCurrency,
+      country: detection.store.defaultCountry,
     };
 
     const metadata = await fetchProductMetadata(detection.normalizedUrl, fallback);
-    const hasUsefulMetadata = Boolean(metadata.image || metadata.price || metadata.title !== fallback.title);
+    const hasUsefulMetadata = Boolean(metadata.image || metadata.price || metadata.title !== "اسم المنتج غير متاح تلقائيًا");
 
     return NextResponse.json({
       ok: true,
-      status: "recognized",
-      message: hasUsefulMetadata ? "تم التعرف على الرابط" : "تعذر جلب بيانات المنتج تلقائيًا، أدخل السعر يدويًا",
+      status: hasUsefulMetadata ? "recognized" : "needs_review",
+      message: hasUsefulMetadata ? "تم استخراج بيانات المنتج" : "تم التعرّف على المتجر، وتحتاج بيانات المنتج إلى مراجعة يدوية",
       product: metadata,
     });
   } catch {
@@ -85,11 +87,14 @@ async function fetchProductMetadata(fetchUrl: string, fallback: ProductMetadata)
 
     const html = (await response.text()).slice(0, MAX_HTML_BYTES);
     const finalUrl = response.url || fetchUrl;
+    if (isAuthLikePage(finalUrl, html)) {
+      return { ...fallback, finalUrl };
+    }
     const finalDetection = detectProductStore(finalUrl);
     const store = finalDetection.ok
       ? finalDetection.store
-      : { id: fallback.storeId, name: fallback.storeName, defaultCurrency: fallback.currency };
-    const extractedTitle = sanitizeTitle(getTitle(html));
+      : { id: fallback.storeId, name: fallback.storeName, defaultCurrency: fallback.currency, defaultCountry: fallback.country };
+    const extractedTitle = sanitizeTitle(getTitle(html), store.name);
     const extractedCurrency = detectCurrency(html);
 
     return {
@@ -97,16 +102,17 @@ async function fetchProductMetadata(fetchUrl: string, fallback: ProductMetadata)
       finalUrl,
       storeId: store.id,
       storeName: store.name,
-      title: extractedTitle || `منتج من ${store.name}`,
+      title: extractedTitle || "اسم المنتج غير متاح تلقائيًا",
       image: getImage(html, finalUrl),
       price: getPrice(html),
+      country: store.defaultCountry,
       currency: resolveCurrency(
         {
           id: store.id,
           name: store.name,
           icon: "",
           defaultCurrency: store.defaultCurrency,
-          defaultCountry: "china",
+          defaultCountry: store.defaultCountry,
           domains: [],
           shortDomains: [],
         },
@@ -135,12 +141,34 @@ function firstString(value: string | string[] | undefined) {
   return value;
 }
 
-function sanitizeTitle(value?: string) {
+function sanitizeTitle(value?: string, storeName = "") {
   if (!value) return undefined;
   const cleaned = value.replace(/[\u0000-\u001F\u007F-\u009F]+/g, " ").replace(/�+/g, "").replace(/\s+/g, " ").trim();
   if (/[\u00C0-\u00FF]/.test(cleaned) && !/[\u0600-\u06FF\u4E00-\u9FFF]/.test(cleaned)) return undefined;
-  if (!cleaned || cleaned.length < 2) return undefined;
+  if (!cleaned || cleaned.length < 6) return undefined;
+  if (isGenericPlatformTitle(cleaned, storeName)) return undefined;
   return cleaned;
+}
+
+function isGenericPlatformTitle(value: string, storeName = "") {
+  const normalized = value.toLowerCase();
+  const store = storeName.toLowerCase();
+  const genericPatterns = [
+    /login|sign in|signin|register|account|passport|auth|captcha|verification/,
+    /taobao|tmall|goofish|xianyu|1688|alibaba|aliexpress/,
+    /闲鱼|淘宝|天猫|登录|登入|注册|验证码|验证|账户|账号|安全验证/,
+    /الرئيسية|تسجيل الدخول|إنشاء حساب|تحقق|رمز التحقق/,
+  ];
+
+  if (store && normalized === store) return true;
+  return genericPatterns.some((pattern) => pattern.test(normalized));
+}
+
+function isAuthLikePage(url: string, html: string) {
+  const loweredUrl = url.toLowerCase();
+  if (/login|signin|passport|account|auth|captcha|verify|register/.test(loweredUrl)) return true;
+  const title = getTitle(html).toLowerCase();
+  return isGenericPlatformTitle(title);
 }
 
 function getImage(html: string, baseUrl: string) {
@@ -173,7 +201,7 @@ function detectCurrency(html: string) {
     matchFirst(html, /"priceCurrency"\s*:\s*"([A-Z]{3})"/i) ||
     matchFirst(html, /"currency"\s*:\s*"([A-Z]{3})"/i);
 
-  return currency === "USD" || currency === "CNY" ? currency : undefined;
+  return currency === "USD" || currency === "CNY" || currency === "JPY" || currency === "EUR" ? currency : undefined;
 }
 
 function getMetaContent(html: string, key: string) {
@@ -248,6 +276,10 @@ function decodeHtml(value: string) {
     .replace(/&gt;/g, ">")
     .trim();
 }
+
+
+
+
 
 
 

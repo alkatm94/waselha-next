@@ -7,7 +7,9 @@
     "build": "next build",
     "start": "next start",
     "db:push": "prisma db push",
-    "studio": "prisma studio"
+    "studio": "prisma studio",
+    "db:generate:postgres": "prisma generate --schema prisma/schema.postgres.prisma",
+    "db:push:postgres": "prisma db push --schema prisma/schema.postgres.prisma"
   },
   "dependencies": {
     "@prisma/client": "^6.1.0",
