@@ -1,4 +1,4 @@
-﻿import Link from "next/link";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AlertTriangle, CheckCircle2, PackagePlus } from "lucide-react";
 import { DashboardShell } from "@/components/account/DashboardShell";
@@ -17,13 +17,15 @@ export default async function NewShipmentPage({ searchParams }: { searchParams: 
   async function createShipmentAction(formData: FormData) {
     "use server";
     const activeCustomer = await requireCustomer("/account/china-address/shipments/new");
+    let reference = "";
     try {
       const shipment = await createChinaShipment(activeCustomer, formData);
-      redirect(`/account/shipments/${shipment.internalReference}`);
+      reference = shipment.internalReference;
     } catch (error) {
       const message = error instanceof Error ? error.message : "تعذر تسجيل الشحنة.";
       redirect(`/account/china-address/shipments/new?error=${encodeURIComponent(message)}`);
     }
+    redirect(`/account/shipments/${reference}`);
   }
 
   return (
