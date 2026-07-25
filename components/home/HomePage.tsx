@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import Image from "next/image";
 import { useMemo, useState, type ReactNode } from "react";
@@ -21,7 +21,7 @@ const serviceTiers: { value: ServiceTier; label: string; hint: string }[] = [
   { value: "plus", label: "شراء ومتابعة", hint: "مناسب للطلبات التي تحتاج متابعة أكثر" },
   { value: "pro", label: "طلب خاص / مورد", hint: "للموردين والطلبات الأعلى تعقيدًا" },
 ];
-const stores = ["Alibaba", "AliExpress", "Taobao", "1688", "Goofish", "Amazon", "eBay", "متاجر عالمية أخرى"];
+const stores = ["Mercari Japan", "Alibaba", "AliExpress", "Taobao", "1688", "Goofish", "Amazon", "eBay"];
 const trustStripItems = ["خدمة داخل السعودية", "متابعة عبر واتساب", "تكلفة تقديرية قبل الطلب", "سياسات واضحة"];
 const faqItems = [
   ["كيف أرسل رابط المنتج؟", "انسخ رابط المنتج من المتجر وضعه في النموذج أو أرسله مباشرة عبر واتساب."],
@@ -65,15 +65,9 @@ export function HomePage() {
       <Header menuOpen={menuOpen} setMenuOpen={setMenuOpen} onPrimary={sendBasicWhatsApp} />
       <GlobalShoppingHero />
       <ProductLinkForm productUrl={productUrl} productNote={productNote} linkError={linkError} setProductUrl={setProductUrl} setProductNote={setProductNote} onSubmit={sendLinkRequest} />
-      <ProductLinkImporter onUseProduct={handleImportedProduct} />
-      <TrustStrip />
-      <TrustSection />
       <ProcessSteps />
       <CalculatorSection productUrl={productUrl} productName={productName} country={country} currency={currency} price={price} weightKg={weightKg} serviceTier={serviceTier} customerName={customerName} customerPhone={customerPhone} quote={quote} calculatorTouched={calculatorTouched} calculatorReady={calculatorReady} setProductUrl={setProductUrl} setProductName={setProductName} setCountry={setCountry} setCurrency={setCurrency} setPrice={setPrice} setWeightKg={setWeightKg} setServiceTier={setServiceTier} setCustomerName={setCustomerName} setCustomerPhone={setCustomerPhone} onSend={sendCalculatorWhatsApp} />
       <SupportedStores onSend={sendBasicWhatsApp} />
-      <WhySection />
-      <TransparencySection />
-      <FAQSection />
       <FinalCTA onPrimary={sendBasicWhatsApp} />
       <Footer onWhatsApp={sendBasicWhatsApp} />
       <FloatingWhatsApp onClick={sendBasicWhatsApp} />
@@ -82,9 +76,59 @@ export function HomePage() {
 }
 
 function Header({ menuOpen, setMenuOpen, onPrimary }: { menuOpen: boolean; setMenuOpen: (value: boolean) => void; onPrimary: () => void }) {
-  return <header className="fixed inset-x-0 top-0 z-50 border-b border-[var(--color-border)] bg-white/88 shadow-sm backdrop-blur-xl"><div className="mx-auto max-w-7xl px-4 sm:px-6"><nav className="flex h-16 items-center justify-between gap-2 lg:h-24"><a href="#home" className="flex shrink-0 items-center" aria-label="وصلها لي - الرئيسية"><Image src="/images/logo.png" alt="وصلها لي" width={300} height={120} priority className="h-12 w-auto object-contain sm:h-[4.5rem] lg:h-20" /></a><div className="hidden items-center gap-7 lg:flex">{navItems.map(([label, href]) => <a key={href} href={href} className="text-[15px] font-bold text-[var(--color-muted)] transition hover:text-[var(--color-primary)]">{label}</a>)}</div><div className="flex items-center gap-2"><a href="#calculator" className="hidden h-12 items-center justify-center rounded-lg border border-[var(--color-border)] bg-white px-5 text-[15px] font-bold text-[var(--color-text)] transition hover:border-[var(--color-accent)] sm:inline-flex">احسب التكلفة</a><button onClick={onPrimary} className="h-11 rounded-lg bg-[var(--color-accent)] px-3 text-sm font-bold sm:h-12 sm:px-5 sm:text-[15px] text-[var(--color-primary-dark)] shadow-md shadow-amber-900/10 transition hover:-translate-y-0.5 hover:bg-[var(--color-accent-dark)]">أرسل رابط المنتج</button><button onClick={() => setMenuOpen(!menuOpen)} className="grid h-11 w-11 place-items-center rounded-lg border border-[var(--color-border)] bg-white text-[var(--color-primary)] lg:hidden" aria-label={menuOpen ? "إغلاق القائمة" : "فتح القائمة"} aria-expanded={menuOpen}>{menuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}</button></div></nav></div>{menuOpen && <div className="border-t border-[var(--color-border)] bg-white px-4 py-4 shadow-lg lg:hidden"><nav className="mx-auto grid max-w-7xl gap-2">{navItems.map(([label, href]) => <a key={href} href={href} onClick={() => setMenuOpen(false)} className="rounded-lg px-3 py-2.5 text-base font-bold text-[var(--color-text)] hover:bg-[var(--color-surface)]">{label}</a>)}</nav></div>}</header>;
+  return (
+    <header className="fixed inset-x-0 top-0 z-50 border-b border-[var(--color-border)] bg-white/88 shadow-sm backdrop-blur-xl">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6">
+        <nav className="flex h-16 items-center justify-between gap-3 lg:h-[76px]">
+          <a href="/" className="flex min-w-0 shrink-0 items-center gap-2.5 sm:gap-3" aria-label="وصلها لي - الرئيسية">
+            <Image
+              src="/images/logo.png"
+              alt="شعار وصلها لي"
+              width={240}
+              height={96}
+              priority
+              sizes="(max-width: 640px) 72px, (max-width: 1024px) 88px, 104px"
+              className="h-9 w-auto shrink-0 object-contain sm:h-11 lg:h-12"
+            />
+            <span className="hidden min-w-0 leading-tight sm:block">
+              <span className="block whitespace-nowrap text-base font-extrabold text-[var(--color-primary-dark)] lg:text-lg">وصلها لي</span>
+              <span className="block whitespace-nowrap text-xs font-bold text-[var(--color-muted)] lg:text-[13px]">نشتري لك من الصين</span>
+            </span>
+          </a>
+          <div className="hidden items-center gap-7 lg:flex">
+            {navItems.map(([label, href]) => (
+              <a key={href} href={href} className="text-[15px] font-bold text-[var(--color-muted)] transition hover:text-[var(--color-primary)]">
+                {label}
+              </a>
+            ))}
+          </div>
+          <div className="flex items-center gap-2">
+            <a href="#calculator" className="hidden h-12 items-center justify-center rounded-lg border border-[var(--color-border)] bg-white px-5 text-[15px] font-bold text-[var(--color-text)] transition hover:border-[var(--color-accent)] sm:inline-flex">
+              احسب التكلفة
+            </a>
+            <button onClick={onPrimary} className="h-11 rounded-lg bg-[var(--color-accent)] px-3 text-sm font-bold text-[var(--color-primary-dark)] shadow-md shadow-amber-900/10 transition hover:-translate-y-0.5 hover:bg-[var(--color-accent-dark)] sm:h-12 sm:px-5 sm:text-[15px]">
+              أرسل رابط المنتج
+            </button>
+            <button onClick={() => setMenuOpen(!menuOpen)} className="grid h-11 w-11 place-items-center rounded-lg border border-[var(--color-border)] bg-white text-[var(--color-primary)] lg:hidden" aria-label={menuOpen ? "إغلاق القائمة" : "فتح القائمة"} aria-expanded={menuOpen}>
+              {menuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+            </button>
+          </div>
+        </nav>
+      </div>
+      {menuOpen && (
+        <div className="border-t border-[var(--color-border)] bg-white px-4 py-4 shadow-lg lg:hidden">
+          <nav className="mx-auto grid max-w-7xl gap-2">
+            {navItems.map(([label, href]) => (
+              <a key={href} href={href} onClick={() => setMenuOpen(false)} className="rounded-lg px-3 py-2.5 text-base font-bold text-[var(--color-text)] hover:bg-[var(--color-surface)]">
+                {label}
+              </a>
+            ))}
+          </nav>
+        </div>
+      )}
+    </header>
+  );
 }
-
 function ProductLinkForm(props: { productUrl: string; productNote: string; linkError: string; setProductUrl: (value: string) => void; setProductNote: (value: string) => void; onSubmit: () => void }) {
   return <section id="product-link-form" className="scroll-mt-28 px-4 py-8 sm:px-6"><div className="mx-auto max-w-7xl rounded-lg border border-[var(--color-border)] bg-white p-4 shadow-xl shadow-slate-900/6 sm:p-6"><div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr_auto] lg:items-end"><Field label="رابط المنتج"><input value={props.productUrl} onChange={(event) => props.setProductUrl(event.target.value)} placeholder="https://..." className="input" inputMode="url" /></Field><Field label="ملاحظات اختيارية"><input value={props.productNote} onChange={(event) => props.setProductNote(event.target.value)} placeholder="اللون، المقاس، الكمية..." className="input" /></Field><button onClick={props.onSubmit} className="inline-flex h-12 items-center justify-center gap-2 rounded-lg bg-[var(--color-accent)] px-4 text-sm font-bold sm:h-14 sm:px-6 sm:text-base text-[var(--color-primary-dark)] transition hover:bg-[var(--color-accent-dark)]"><MessageCircle className="h-5 w-5" />أرسل الطلب عبر واتساب</button></div>{props.linkError && <p className="mt-3 flex items-center gap-2 text-sm font-bold text-[var(--color-error)]"><AlertCircle className="h-4 w-4" />{props.linkError}</p>}</div></section>;
 }
@@ -121,7 +165,7 @@ function CalculatorSummary({ quote, ready, serviceTier }: { quote: ReturnType<ty
   return <aside className="rounded-lg bg-[var(--color-primary-dark)] p-5 text-white shadow-2xl shadow-slate-950/20 sm:p-6"><div className="flex items-center gap-3"><span className="grid h-12 w-12 place-items-center rounded-lg bg-[var(--color-accent)] text-[var(--color-primary-dark)]"><CircleDollarSign className="h-5 w-5" /></span><div><p className="text-[15px] font-bold text-white/68">ملخص الحاسبة</p><h3 className="text-2xl font-bold">تفصيل التكلفة التقديرية</h3></div></div><div className="mt-6 rounded-lg border border-[var(--color-accent)]/30 bg-white/[0.08] p-5"><p className="text-sm font-bold text-white/65">الإجمالي التقديري</p><p className="mt-2 text-5xl font-bold leading-none text-[var(--color-accent)] sm:text-6xl">{ready ? formatSar(quote.total) : "—"}<span className="mr-2 align-middle text-lg text-white">ريال</span></p><p className="mt-3 text-[15px] font-semibold leading-7 text-white/70">{serviceTiers.find((item) => item.value === serviceTier)?.hint}</p></div><div className="mt-5 grid gap-3 text-[15px]"><SummaryLine label="سعر المنتج" value={ready ? `${formatSar(quote.productSar)} ريال` : "—"} /><SummaryLine label="الشحن الدولي" value={ready ? `${formatSar(quote.shippingSar)} ريال` : "—"} /><SummaryLine label="رسوم الخدمة" value={ready ? `${formatSar(quote.serviceFee)} ريال` : "—"} /><div className="rounded-lg border border-white/10 bg-white/[0.045] p-4"><p className="text-sm font-bold text-white/55">الجمارك وضريبة القيمة المضافة</p><p className="mt-1 text-base font-bold text-white">تحدد بعد مراجعة المنتج والشحن الفعلي</p></div></div><p className="mt-5 rounded-lg border border-[var(--color-accent)]/25 bg-[var(--color-accent)]/10 p-4 text-[15px] font-semibold leading-7 text-[#f9e7aa]">هذه الحسبة تقديرية، ويعتمد السعر النهائي على مراجعة المنتج وتكلفة الشحن الفعلية.</p></aside>;
 }
 function SupportedStores({ onSend }: { onSend: () => void }) {
-  return <section id="stores" className="bg-[var(--color-surface)] px-4 py-12 sm:px-6"><div className="mx-auto max-w-7xl"><SectionHeading eyebrow="المتاجر المدعومة" title="نراجع روابط من أشهر المتاجر العالمية" desc="نعرض أسماء المتاجر للتوضيح فقط، ووصلها لي خدمة مستقلة وليست تابعة لهذه المنصات." /><div className="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{stores.map((store) => <div key={store} className="flex items-center gap-3 rounded-lg border border-[var(--color-border)] bg-white p-4 shadow-sm"><span className="grid h-10 w-10 place-items-center rounded-lg bg-[var(--color-primary)] text-xs font-bold text-[var(--color-accent)]">{store.slice(0, 2).toUpperCase()}</span><b className="text-base text-[var(--color-text)]">{store}</b></div>)}</div><div className="mt-6 flex flex-col items-center justify-between gap-4 rounded-lg border border-[var(--color-border)] bg-white p-5 sm:flex-row"><p className="text-sm font-bold leading-7 text-[var(--color-muted)]">يمكننا مراجعة روابط من متاجر أخرى أيضًا.</p><button onClick={onSend} className="inline-flex h-12 items-center justify-center gap-2 rounded-lg bg-[var(--color-accent)] px-5 text-sm font-bold text-[var(--color-primary-dark)]"><Store className="h-4 w-4" />أرسل متجرك لنا</button></div></div></section>;
+  return <section id="stores" className="bg-[var(--color-surface)] px-4 py-12 sm:px-6"><div className="mx-auto max-w-7xl"><SectionHeading eyebrow="المتاجر المدعومة" title="نراجع روابط من أشهر المتاجر العالمية" desc="نعرض أسماء المتاجر للتوضيح فقط، ووصلها لي خدمة مستقلة وليست تابعة لهذه المنصات." /><div className="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{stores.map((store) => <a key={store} href={store === "Mercari Japan" ? "/stores/mercari-japan" : "/stores"} className="flex items-center gap-3 rounded-lg border border-[var(--color-border)] bg-white p-4 shadow-sm transition hover:border-[var(--color-accent)]"><span className="grid h-10 w-10 place-items-center rounded-lg bg-[var(--color-primary)] text-xs font-bold text-[var(--color-accent)]">{store.slice(0, 2).toUpperCase()}</span><b className="text-base text-[var(--color-text)]">{store}</b></a>)}</div><div className="mt-6 flex flex-col items-center justify-between gap-4 rounded-lg border border-[var(--color-border)] bg-white p-5 sm:flex-row"><p className="text-sm font-bold leading-7 text-[var(--color-muted)]">يمكننا مراجعة روابط من متاجر أخرى أيضًا.</p><div className="flex flex-wrap gap-3"><a href="/stores" className="inline-flex h-12 items-center justify-center gap-2 rounded-lg border border-[var(--color-border)] px-5 text-sm font-bold text-[var(--color-primary-dark)]"><Store className="h-4 w-4" />عرض المتاجر</a><button onClick={onSend} className="inline-flex h-12 items-center justify-center gap-2 rounded-lg bg-[var(--color-accent)] px-5 text-sm font-bold text-[var(--color-primary-dark)]"><Store className="h-4 w-4" />أرسل متجرك لنا</button></div></div></div></section>;
 }
 
 function WhySection() {
@@ -168,6 +212,7 @@ function Field({ label, children, className = "" }: { label: string; children: R
 function SummaryLine({ label, value }: { label: string; value: string }) {
   return <div className="flex items-center justify-between gap-4 border-t border-white/10 pt-3"><span className="font-semibold text-white/62">{label}</span><b className="text-left text-white">{value}</b></div>;
 }
+
 
 
 
