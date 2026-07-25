@@ -1,5 +1,5 @@
-﻿import Link from "next/link";
-import { PackageCheck, Search, ShieldCheck, Truck } from "lucide-react";
+import Link from "next/link";
+import { PackageCheck, Search, ShieldCheck, ShoppingBag, Truck } from "lucide-react";
 import { requireAdmin } from "@/lib/admin-auth";
 import { getAdminDashboardData } from "@/lib/admin-shipments";
 import { AdminNotificationBell } from "@/components/admin/AdminNotificationBell";
@@ -24,7 +24,8 @@ export default async function AdminDashboardPage({ searchParams }: { searchParam
             <h1 className="text-2xl font-bold text-[var(--brand-navy)]">لوحة تشغيل الشحنات</h1>
           </div>
           <div className="flex flex-wrap items-center gap-3">
-            <AdminNotificationBell adminId={admin.id} />
+            <Link href="/admin/orders" className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-[var(--border)] bg-white px-3 text-sm font-bold text-[var(--brand-navy)]"><ShoppingBag className="h-4 w-4" />طلبات الشراء</Link>
+            <Link href="/admin/store-products" className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-[var(--border)] bg-white px-3 text-sm font-bold text-[var(--brand-navy)]"><PackageCheck className="h-4 w-4" />منتجات المتاجر</Link><AdminNotificationBell adminId={admin.id} />
             <span className="inline-flex items-center gap-2 rounded-lg bg-[var(--info-bg)] px-3 py-2 text-sm font-bold text-[var(--info)]"><ShieldCheck className="h-4 w-4" />{admin.name}</span>
             <form action="/admin/logout" method="post"><button className="h-10 rounded-lg border border-[var(--border)] px-4 text-sm font-bold text-[var(--brand-navy)]">تسجيل الخروج</button></form>
           </div>
@@ -79,4 +80,6 @@ function Stat({ label, value, tone = "default" }: { label: string; value: number
 function Info({ label, value, ltr }: { label: string; value: string; ltr?: boolean }) {
   return <div className="min-w-0"><p className="text-[12px] font-bold text-[var(--text-secondary)]">{label}</p><p className="truncate font-bold text-[var(--text-primary)]" dir={ltr ? "ltr" : "rtl"}>{value}</p></div>;
 }
+
+
 

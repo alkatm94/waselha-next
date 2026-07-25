@@ -1,5 +1,5 @@
 ﻿import Link from "next/link";
-import { Bell, Home, LogOut, MapPinned, Package, PackagePlus, UserRound } from "lucide-react";
+import { Bell, Home, LogOut, MapPinned, Package, PackagePlus, ShoppingBag, UserRound } from "lucide-react";
 import { getCustomerNotificationSummary, notificationIcon } from "@/lib/notifications";
 
 type DashboardStats = {
@@ -11,7 +11,7 @@ type DashboardStats = {
 type DashboardShellProps = {
   customer: { id: number; name: string; customerId: string };
   stats: DashboardStats;
-  active: "overview" | "address" | "new-shipment" | "shipments" | "account";
+  active: "overview" | "address" | "new-shipment" | "shipments" | "new-order" | "orders" | "account";
   title: string;
   description?: string;
   children: React.ReactNode;
@@ -22,6 +22,8 @@ const navItems = [
   { key: "address", href: "/account/china-address", label: "عنواني في الصين", icon: MapPinned },
   { key: "new-shipment", href: "/account/china-address/shipments/new", label: "تسجيل شحنة", icon: PackagePlus },
   { key: "shipments", href: "/account/shipments", label: "شحناتي", icon: Package },
+  { key: "new-order", href: "/account/orders/new", label: "طلب شراء", icon: ShoppingBag },
+  { key: "orders", href: "/account/orders", label: "طلبات الشراء", icon: PackagePlus },
   { key: "account", href: "/account", label: "حسابي", icon: UserRound },
 ] as const;
 
@@ -132,3 +134,6 @@ function NotificationBell({ unread, recent }: { unread: number; recent: { id: nu
     </details>
   );
 }
+
+
+

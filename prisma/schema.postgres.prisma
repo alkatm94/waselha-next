@@ -24,27 +24,28 @@ model Lead {
 }
 
 model QuotePreset {
-  id          Int      @id @default(autoincrement())
-  country     String
-  currency    String
-  fxToSar     Float
+  id            Int      @id @default(autoincrement())
+  country       String
+  currency      String
+  fxToSar       Float
   shippingPerKg Float
-  serviceFee  Float
-  createdAt   DateTime @default(now())
+  serviceFee    Float
+  createdAt     DateTime @default(now())
 }
 
 model Customer {
-  id           Int               @id @default(autoincrement())
-  customerId   String            @unique
-  name         String
-  email        String            @unique
-  phone        String?
-  passwordHash String
-  sessions     CustomerSession[]
-  shipments    ChinaShipment[]
-  notifications Notification[]
-  createdAt    DateTime          @default(now())
-  updatedAt    DateTime          @updatedAt
+  id             Int               @id @default(autoincrement())
+  customerId     String            @unique
+  name           String
+  email          String            @unique
+  phone          String?
+  passwordHash   String
+  sessions       CustomerSession[]
+  shipments      ChinaShipment[]
+  purchaseOrders PurchaseOrder[]
+  notifications  Notification[]
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
 }
 
 model CustomerSession {
@@ -67,18 +68,25 @@ model WarehouseSetting {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 }
+
 model ShipmentCounter {
   year       Int      @id
   lastNumber Int      @default(0)
   updatedAt  DateTime @updatedAt
 }
 
+model PurchaseOrderCounter {
+  year       Int      @id
+  lastNumber Int      @default(0)
+  updatedAt  DateTime @updatedAt
+}
+
 model ChinaShipment {
-  id                          Int      @id @default(autoincrement())
-  internalReference           String   @unique
+  id                          Int                @id @default(autoincrement())
+  internalReference           String             @unique
   customerId                  Int
   customerCode                String
-  customer                    Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  customer                    Customer           @relation(fields: [customerId], references: [id], onDelete: Cascade)
   productName                 String
   productUrl                  String
   storeName                   String
@@ -88,7 +96,7 @@ model ChinaShipment {
   currency                    String
   invoiceImageUrl             String?
   notes                       String?
-  status                      String   @default("REGISTERED")
+  status                      String             @default("REGISTERED")
   weightKg                    Float?
   lengthCm                    Float?
   widthCm                     Float?
@@ -101,8 +109,8 @@ model ChinaShipment {
   shippingFee                 Float?
   internationalTrackingNumber String?
   warehouseArrivedAt          DateTime?
-  createdAt                   DateTime @default(now())
-  updatedAt                   DateTime @updatedAt
+  createdAt                   DateTime           @default(now())
+  updatedAt                   DateTime           @updatedAt
   events                      ShipmentEvent[]
   photos                      ShipmentPhoto[]
   auditLogs                   ShipmentAuditLog[]
@@ -135,17 +143,19 @@ model ShipmentPhoto {
 
   @@index([shipmentId])
 }
+
 model AdminUser {
-  id           Int            @id @default(autoincrement())
-  name         String
-  email        String         @unique
-  passwordHash String
-  role         String         @default("OPERATOR")
-  sessions     AdminSession[]
-  auditLogs    ShipmentAuditLog[]
-  notifications Notification[]
-  createdAt    DateTime       @default(now())
-  updatedAt    DateTime       @updatedAt
+  id                     Int                     @id @default(autoincrement())
+  name                   String
+  email                  String                  @unique
+  passwordHash           String
+  role                   String                  @default("OPERATOR")
+  sessions               AdminSession[]
+  auditLogs              ShipmentAuditLog[]
+  purchaseOrderAuditLogs PurchaseOrderAuditLog[]
+  notifications          Notification[]
+  createdAt              DateTime                @default(now())
+  updatedAt              DateTime                @updatedAt
 }
 
 model AdminSession {
@@ -172,24 +182,106 @@ model ShipmentAuditLog {
   @@index([shipmentId])
   @@index([adminId])
 }
+
+model PurchaseOrder {
+  id                    Int                     @id @default(autoincrement())
+  orderNumber           String                  @unique
+  customerId            Int
+  customer              Customer                @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  customerCode          String
+  productUrl            String
+  productName           String
+  storeName             String
+  variant               String?
+  quantity              Int
+  estimatedProductPrice Decimal?                @db.Decimal(12, 2)
+  productImageUrl       String?
+  notes                 String?
+  status                String                  @default("PENDING_REVIEW")
+  quotedProductPrice    Decimal?                @db.Decimal(12, 2)
+  domesticShipping      Decimal?                @db.Decimal(12, 2)
+  serviceFee            Decimal?                @db.Decimal(12, 2)
+  estimatedTaxes        Decimal?                @db.Decimal(12, 2)
+  finalTotal            Decimal?                @db.Decimal(12, 2)
+  customerNote          String?
+  quotedAt              DateTime?
+  createdAt             DateTime                @default(now())
+  updatedAt             DateTime                @updatedAt
+  auditLogs             PurchaseOrderAuditLog[]
+  notifications         Notification[]
+
+  @@index([customerId])
+  @@index([customerCode])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model PurchaseOrderAuditLog {
+  id              Int           @id @default(autoincrement())
+  purchaseOrderId Int
+  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  adminId         Int?
+  admin           AdminUser?    @relation(fields: [adminId], references: [id], onDelete: SetNull)
+  adminEmail      String
+  field           String
+  previousValue   String?
+  newValue        String?
+  createdAt       DateTime      @default(now())
+
+  @@index([purchaseOrderId])
+  @@index([adminId])
+}
+
+
+model StoreProduct {
+  id                 Int      @id @default(autoincrement())
+  storeName          String
+  originalUrl        String
+  externalProductId  String?
+  arabicName         String
+  originalName       String?
+  description        String?
+  priceJpy           Int?
+  approxPriceSar     Decimal? @db.Decimal(12, 2)
+  imageUrlsJson      String?
+  category           String?
+  brand              String?
+  productCondition   String?
+  availabilityStatus String   @default("HIDDEN")
+  isFeatured         Boolean  @default(false)
+  displayOrder       Int      @default(0)
+  lastCheckedAt      DateTime?
+  publishedAt        DateTime?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([storeName])
+  @@index([availabilityStatus])
+  @@index([isFeatured])
+  @@index([displayOrder])
+  @@index([createdAt])
+}
 model Notification {
-  id          Int            @id @default(autoincrement())
-  userId      Int?
-  user        Customer?      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  adminUserId Int?
-  adminUser   AdminUser?     @relation(fields: [adminUserId], references: [id], onDelete: Cascade)
-  shipmentId  Int?
-  shipment    ChinaShipment? @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
-  type        String
-  title       String
-  message     String
-  isRead      Boolean        @default(false)
-  readAt      DateTime?
-  dedupeKey   String?        @unique
-  createdAt   DateTime       @default(now())
+  id              Int            @id @default(autoincrement())
+  userId          Int?
+  user            Customer?      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  adminUserId     Int?
+  adminUser       AdminUser?     @relation(fields: [adminUserId], references: [id], onDelete: Cascade)
+  shipmentId      Int?
+  shipment        ChinaShipment? @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  purchaseOrderId Int?
+  purchaseOrder   PurchaseOrder? @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  type            String
+  title           String
+  message         String
+  isRead          Boolean        @default(false)
+  readAt          DateTime?
+  dedupeKey       String?        @unique
+  createdAt       DateTime       @default(now())
 
   @@index([userId, isRead])
   @@index([adminUserId, isRead])
   @@index([shipmentId])
+  @@index([purchaseOrderId])
   @@index([type])
 }

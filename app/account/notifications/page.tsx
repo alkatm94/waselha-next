@@ -1,4 +1,4 @@
-﻿import Link from "next/link";
+import Link from "next/link";
 import { Bell } from "lucide-react";
 import { DashboardShell } from "@/components/account/DashboardShell";
 import { requireCustomer } from "@/lib/auth";
@@ -22,6 +22,7 @@ export default async function CustomerNotificationsPage() {
             <h2 className="text-lg font-bold text-[var(--brand-navy)]">{item.title}</h2>
             <p className="text-sm font-semibold leading-7 text-[var(--text-secondary)]">{item.message}</p>
             {item.shipment && <span className="latin-text text-xs font-bold text-[var(--brand-navy)]" dir="ltr">{item.shipment.internalReference}</span>}
+            {item.purchaseOrder && <span className="latin-text text-xs font-bold text-[var(--brand-navy)]" dir="ltr">{item.purchaseOrder.orderNumber}</span>}
           </Link>
         ))}
         {notifications.length === 0 && <p className="rounded-lg border border-[var(--border)] bg-white p-6 text-center text-sm font-bold text-[var(--text-secondary)]">لا توجد إشعارات بعد.</p>}
@@ -29,3 +30,5 @@ export default async function CustomerNotificationsPage() {
     </DashboardShell>
   );
 }
+
+

@@ -7,6 +7,7 @@ type NotificationTarget =
 
 type CreateNotificationInput = NotificationTarget & {
   shipmentId?: number | null;
+  purchaseOrderId?: number | null;
   type: string;
   title: string;
   message: string;
@@ -21,6 +22,7 @@ export async function createNotification(input: CreateNotificationInput) {
     userId: input.userId || null,
     adminUserId: input.adminUserId || null,
     shipmentId: input.shipmentId || null,
+    purchaseOrderId: input.purchaseOrderId || null,
     type: input.type,
     title: input.title,
     message: input.message,
@@ -42,7 +44,7 @@ export async function notifyAllAdmins(input: Omit<CreateNotificationInput, "admi
 export async function getCustomerNotificationSummary(userId: number) {
   const [unread, recent] = await Promise.all([
     prisma.notification.count({ where: { userId, isRead: false } }),
-    prisma.notification.findMany({ where: { userId }, include: { shipment: { select: { internalReference: true } } }, orderBy: { createdAt: "desc" }, take: 5 }),
+    prisma.notification.findMany({ where: { userId }, include: { shipment: { select: { internalReference: true } }, purchaseOrder: { select: { orderNumber: true } } }, orderBy: { createdAt: "desc" }, take: 5 }),
   ]);
   return { unread, recent };
 }
@@ -50,27 +52,27 @@ export async function getCustomerNotificationSummary(userId: number) {
 export async function getAdminNotificationSummary(adminUserId: number) {
   const [unread, recent] = await Promise.all([
     prisma.notification.count({ where: { adminUserId, isRead: false } }),
-    prisma.notification.findMany({ where: { adminUserId }, include: { shipment: { select: { internalReference: true } } }, orderBy: { createdAt: "desc" }, take: 5 }),
+    prisma.notification.findMany({ where: { adminUserId }, include: { shipment: { select: { internalReference: true } }, purchaseOrder: { select: { orderNumber: true } } }, orderBy: { createdAt: "desc" }, take: 5 }),
   ]);
   return { unread, recent };
 }
 
 export async function getCustomerNotifications(userId: number) {
-  return prisma.notification.findMany({ where: { userId }, include: { shipment: { select: { internalReference: true, productName: true } } }, orderBy: { createdAt: "desc" } });
+  return prisma.notification.findMany({ where: { userId }, include: { shipment: { select: { internalReference: true, productName: true } }, purchaseOrder: { select: { orderNumber: true, productName: true } } }, orderBy: { createdAt: "desc" } });
 }
 
 export async function markCustomerNotificationRead(userId: number, id: number) {
-  const notification = await prisma.notification.findFirst({ where: { id, userId }, include: { shipment: true } });
+  const notification = await prisma.notification.findFirst({ where: { id, userId }, include: { shipment: true, purchaseOrder: true } });
   if (!notification) redirect("/account/notifications");
   if (!notification.isRead) await prisma.notification.update({ where: { id }, data: { isRead: true, readAt: new Date() } });
-  redirect(notification.shipment ? `/account/shipments/${notification.shipment.internalReference}` : "/account/notifications");
+  redirect(notification.purchaseOrder ? `/account/orders/${notification.purchaseOrder.orderNumber}` : notification.shipment ? `/account/shipments/${notification.shipment.internalReference}` : "/account/notifications");
 }
 
 export async function markAdminNotificationRead(adminUserId: number, id: number) {
-  const notification = await prisma.notification.findFirst({ where: { id, adminUserId }, include: { shipment: true } });
+  const notification = await prisma.notification.findFirst({ where: { id, adminUserId }, include: { shipment: true, purchaseOrder: true } });
   if (!notification) redirect("/admin");
   if (!notification.isRead) await prisma.notification.update({ where: { id }, data: { isRead: true, readAt: new Date() } });
-  redirect(notification.shipment ? `/admin/shipments/${notification.shipment.internalReference}` : "/admin");
+  redirect(notification.purchaseOrder ? `/admin/orders/${notification.purchaseOrder.orderNumber}` : notification.shipment ? `/admin/shipments/${notification.shipment.internalReference}` : "/admin");
 }
 
 export async function markAllCustomerNotificationsRead(userId: number) {
@@ -87,6 +89,8 @@ export function notificationIcon(type: string) {
   if (type.includes("FEE")) return "رسوم";
   if (type.includes("TRACKING") || type.includes("SHIPPED")) return "شحن";
   if (type.includes("PHOTO")) return "صور";
+  if (type.includes("PURCHASE_ORDER")) return "طلب شراء";
   if (type.includes("ADMIN")) return "إدارة";
   return "تنبيه";
 }
+
