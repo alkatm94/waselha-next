@@ -1,4 +1,4 @@
-﻿import type { Metadata, Viewport } from "next";
+import type { Metadata, Viewport } from "next";
 import Script from "next/script";
 import { IBM_Plex_Sans_Arabic } from "next/font/google";
 import "./globals.css";
@@ -30,6 +30,11 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "وصلها لي | نشتري لك من الصين ونوصلها إلى السعودية",
     description: "أرسل رابط المنتج واحصل على تكلفة تقديرية وخدمة شراء وشحن إلى السعودية.",
+  },
+  manifest: "/manifest.webmanifest",
+  icons: {
+    icon: [{ url: "/icon.png", sizes: "512x512", type: "image/png" }],
+    apple: [{ url: "/apple-icon.png", sizes: "180x180", type: "image/png" }],
   },
 };
 
