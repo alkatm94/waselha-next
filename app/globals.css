@@ -353,3 +353,42 @@ select.input {
     bottom: calc(12px + env(safe-area-inset-bottom)) !important;
   }
 }
+
+.home-shell {
+  --color-primary: #0B2638;
+  --color-primary-dark: #0B2638;
+  --color-accent: #E9A82E;
+  --color-accent-dark: #C98717;
+  --color-bg: #F7F8F9;
+  --color-surface: #FFFFFF;
+  --color-text: #102331;
+  --color-muted: #63727D;
+  --color-border: #E2E7EA;
+}
+
+.home-shell :where(a, button, input, select, textarea):focus-visible {
+  outline: 2px solid #17465F;
+  outline-offset: 3px;
+}
+
+.home-shell .input {
+  min-height: 50px;
+  border-radius: 8px;
+  font-weight: 400;
+}
+
+.product-detail-shell {
+  --color-primary: #0B2638;
+  --color-primary-dark: #0B2638;
+  --color-accent: #E9A82E;
+  --color-accent-dark: #C98717;
+  --color-bg: #F7F8F9;
+  --color-text: #102331;
+  --color-muted: #63727D;
+  --color-border: #E2E7EA;
+}
+
+.product-detail-shell :where(a, button, summary):focus-visible {
+  outline: 2px solid #17465F;
+  outline-offset: 3px;
+}

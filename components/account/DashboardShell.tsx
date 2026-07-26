@@ -1,4 +1,4 @@
-﻿import Link from "next/link";
+import Link from "next/link";
 import { Bell, Home, LogOut, MapPinned, Package, PackagePlus, ShoppingBag, UserRound } from "lucide-react";
 import { getCustomerNotificationSummary, notificationIcon } from "@/lib/notifications";
 
@@ -14,6 +14,7 @@ type DashboardShellProps = {
   active: "overview" | "address" | "new-shipment" | "shipments" | "new-order" | "orders" | "account";
   title: string;
   description?: string;
+  layout?: "default" | "overview";
   children: React.ReactNode;
 };
 
@@ -27,27 +28,28 @@ const navItems = [
   { key: "account", href: "/account", label: "حسابي", icon: UserRound },
 ] as const;
 
-export async function DashboardShell({ customer, stats, active, title, description, children }: DashboardShellProps) {
+export async function DashboardShell({ customer, stats, active, title, description, layout = "default", children }: DashboardShellProps) {
   const notifications = await getCustomerNotificationSummary(customer.id);
+  const isOverview = layout === "overview";
   return (
     <main dir="rtl" className="min-h-screen bg-[var(--background)] text-[var(--text-primary)]">
-      <div className="mx-auto grid min-h-screen max-w-[1440px] lg:grid-cols-[280px_minmax(0,1fr)]">
-        <aside className="sticky top-0 hidden h-screen border-l border-[var(--border)] bg-[var(--brand-navy)] px-5 py-6 text-white lg:block">
+      <div className={`mx-auto grid min-h-screen ${isOverview ? "max-w-[1680px] lg:grid-cols-[232px_minmax(0,1fr)]" : "max-w-[1440px] lg:grid-cols-[280px_minmax(0,1fr)]"}`}>
+        <aside className={`sticky top-0 hidden h-screen border-l border-white/10 bg-[var(--brand-navy)] py-6 text-white lg:block ${isOverview ? "px-4" : "px-5"}`}>
           <Link href="/" className="block text-2xl font-bold text-white">وصلها لي</Link>
           <p className="mt-1 text-sm font-medium text-white/65">لوحة العميل</p>
 
-          <div className="mt-7 rounded-lg bg-white/8 p-4">
+          <div className={`mt-7 rounded-xl bg-white/[0.07] ${isOverview ? "p-3.5" : "p-4"}`}>
             <p className="text-sm font-semibold text-white/65">مرحبًا</p>
-            <p className="mt-1 text-lg font-bold text-white">{customer.name}</p>
+            <p className={`mt-1 truncate font-bold text-white ${isOverview ? "text-base" : "text-lg"}`}>{customer.name}</p>
             <p className="mt-2 w-fit rounded-lg bg-white/10 px-3 py-1 text-sm font-bold text-[var(--brand-gold)]" dir="ltr">{customer.customerId}</p>
           </div>
 
-          <nav className="mt-7 grid gap-2">
+          <nav className={`mt-7 grid ${isOverview ? "gap-1.5" : "gap-2"}`}>
             {navItems.map((item) => {
               const Icon = item.icon;
               const selected = item.key === active;
               return (
-                <Link key={item.key} href={item.href} className={`flex h-12 items-center gap-3 rounded-lg px-3 text-sm font-bold transition ${selected ? "bg-[var(--brand-gold)] text-[var(--brand-navy)]" : "text-white/78 hover:bg-white/10 hover:text-white"}`}>
+                <Link key={item.key} href={item.href} className={`flex items-center gap-3 rounded-lg px-3 text-sm font-bold transition ${isOverview ? "h-11" : "h-12"} ${selected ? "bg-[var(--brand-gold)] text-[var(--brand-navy)]" : "text-white/78 hover:bg-white/10 hover:text-white"}`}>
                   <Icon className="h-5 w-5" />
                   {item.label}
                 </Link>
@@ -62,7 +64,7 @@ export async function DashboardShell({ customer, stats, active, title, descripti
         </aside>
 
         <section className="min-w-0 pb-[calc(78px+env(safe-area-inset-bottom))] lg:pb-0">
-          <header className="border-b border-[var(--border)] bg-[var(--surface)]/95 px-4 py-4 backdrop-blur sm:px-6 lg:px-8 lg:py-5">
+          {!isOverview && <header className="border-b border-[var(--border)] bg-[var(--surface)]/95 px-4 py-4 backdrop-blur sm:px-6 lg:px-8 lg:py-5">
             <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
               <div className="min-w-0">
                 <p className="text-sm font-bold text-[var(--brand-gold-dark)]">{customer.customerId}</p>
@@ -75,9 +77,9 @@ export async function DashboardShell({ customer, stats, active, title, descripti
                 <Stat label="تحتاج إجراء" value={stats.needsAction} tone="warning" />
               </div>
             </div>
-          </header>
+          </header>}
 
-          <div className="px-4 py-5 sm:px-6 lg:px-8 lg:py-8">{children}</div>
+          <div className={isOverview ? "px-4 py-5 sm:px-6 sm:py-7 lg:px-8 xl:px-10 xl:py-9" : "px-4 py-5 sm:px-6 lg:px-8 lg:py-8"}>{children}</div>
         </section>
       </div>
 

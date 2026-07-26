@@ -1,4 +1,4 @@
-﻿import { mkdir, writeFile } from "fs/promises";
+import { mkdir, writeFile } from "fs/promises";
 import path from "path";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
@@ -57,7 +57,7 @@ export async function getAdminDashboardData(query = "") {
       }
     : {};
 
-  const [shipments, counts] = await Promise.all([
+  const [shipments, counts, customers] = await Promise.all([
     prisma.chinaShipment.findMany({
       where,
       include: { customer: { select: { name: true, email: true, customerId: true } } },
@@ -65,6 +65,7 @@ export async function getAdminDashboardData(query = "") {
       take: 80,
     }),
     prisma.chinaShipment.findMany({ select: { status: true } }),
+    prisma.customer.count(),
   ]);
 
   const stat = (statuses: string[]) => counts.filter((item) => statuses.includes(item.status)).length;
@@ -77,6 +78,7 @@ export async function getAdminDashboardData(query = "") {
       needsAction: stat(["AWAITING_SHIPPING_PAYMENT"]),
       ready: stat(["READY_TO_SHIP"]),
       shipped: stat(["SHIPPED", "DELIVERED"]),
+      customers,
     },
   };
 }
