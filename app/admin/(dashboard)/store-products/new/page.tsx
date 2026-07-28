@@ -24,7 +24,7 @@ export default async function NewStoreProductPage({ searchParams }: { searchPara
     category: "",
     brand: "",
     productCondition: "",
-    availabilityStatus: "HIDDEN" as const,
+    availabilityStatus: "NEEDS_REVIEW" as const,
     isFeatured: false,
     displayOrder: "0",
     lastCheckedAt: new Date().toISOString().slice(0, 16),

@@ -62,7 +62,7 @@ function productToDefaults(product?: ProductLike | null, preview?: PreviewLike |
     category: product?.category || preview?.category || "",
     brand: product?.brand || preview?.brand || "",
     productCondition: product?.productCondition || preview?.productCondition || "",
-    availabilityStatus: product?.availabilityStatus || preview?.availabilityStatus || "HIDDEN",
+    availabilityStatus: product?.availabilityStatus || preview?.availabilityStatus || "NEEDS_REVIEW",
     isFeatured: product?.isFeatured ?? preview?.isFeatured ?? false,
     displayOrder: product?.displayOrder?.toString() || preview?.displayOrder || "0",
     lastCheckedAt: dateValue(product?.lastCheckedAt) || preview?.lastCheckedAt || "",

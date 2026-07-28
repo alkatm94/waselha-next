@@ -1,11 +1,13 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { createPurchaseOrder } from "@/lib/purchase-orders";
+import { fetchMercariProduct } from "@/lib/mercari-import";
 
 export const STORE_PRODUCT_STATUSES = [
   { value: "AVAILABLE", label: "متوفر" },
   { value: "SOLD", label: "مباع" },
   { value: "HIDDEN", label: "مخفي" },
+  { value: "NEEDS_REVIEW", label: "يحتاج مراجعة" },
 ] as const;
 
 export const STORE_NAMES = ["Mercari Japan"] as const;
@@ -68,7 +70,7 @@ function intOrNull(value: string | null) {
 }
 
 function statusValue(value: string | null): StoreProductStatus {
-  return STORE_PRODUCT_STATUSES.some((item) => item.value === value) ? (value as StoreProductStatus) : "HIDDEN";
+  return STORE_PRODUCT_STATUSES.some((item) => item.value === value) ? (value as StoreProductStatus) : "NEEDS_REVIEW";
 }
 
 function parseImages(value: string | null) {
@@ -139,7 +141,7 @@ function fallbackPreview(originalUrl: string, fetchNotice?: string): StoreProduc
     category: "",
     brand: "",
     productCondition: "",
-    availabilityStatus: "HIDDEN",
+    availabilityStatus: "NEEDS_REVIEW",
     isFeatured: false,
     displayOrder: "0",
     lastCheckedAt: new Date().toISOString().slice(0, 16),
@@ -150,59 +152,34 @@ function fallbackPreview(originalUrl: string, fetchNotice?: string): StoreProduc
 export async function previewStoreProductFromUrl(originalUrl: string): Promise<StoreProductPreview> {
   const normalizedUrl = assertUrl(originalUrl, "رابط المنتج الأصلي");
   const fallback = fallbackPreview(normalizedUrl);
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const imported = await fetchMercariProduct(normalizedUrl, JPY_TO_SAR);
 
-  try {
-    const response = await fetch(normalizedUrl, {
-      cache: "no-store",
-      redirect: "follow",
-      signal: controller.signal,
-      headers: {
-        accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "accept-language": "ja,en-US;q=0.9,ar;q=0.8",
-        "user-agent": "Mozilla/5.0 (compatible; WaselhaCatalogImporter/1.0)",
-      },
-    });
-
-    const contentType = response.headers.get("content-type") || "";
-    if (!response.ok || !contentType.includes("text/html")) {
-      return { ...fallback, fetchNotice: "تعذر جلب بيانات كافية من الرابط. أكمل البيانات يدويًا قبل النشر." };
-    }
-
-    const html = (await response.text()).slice(0, MAX_HTML_BYTES);
-    const title = cleanText(getMetaContent(html, "og:title") || getMetaContent(html, "twitter:title") || matchFirst(html, /<title[^>]*>([\s\S]*?)<\/title>/i) || "");
-    const description = cleanText(getMetaContent(html, "og:description") || getMetaContent(html, "description") || "");
-    const image = absolutize(getMetaContent(html, "og:image") || getMetaContent(html, "twitter:image") || "", response.url || normalizedUrl);
-    const price = getPrice(html);
-    const approxSar = price ? Math.ceil(price * JPY_TO_SAR).toString() : "";
-
-    return {
-      ...fallback,
-      originalUrl: response.url || normalizedUrl,
-      externalProductId: extractMercariId(response.url || normalizedUrl),
-      originalName: title,
-      arabicName: title,
-      description,
-      priceJpy: price ? String(price) : "",
-      approxPriceSar: approxSar,
-      imageUrls: image || "",
-      fetchNotice: title || image || price ? "تم جلب بيانات أولية. راجعها وعدّلها قبل النشر." : "لم يتم العثور على بيانات كافية. أكمل البيانات يدويًا قبل النشر.",
-    };
-  } catch (error) {
-    console.error("[store-product-preview]", { at: new Date().toISOString(), originalUrl: normalizedUrl, error: error instanceof Error ? error.message : String(error) });
-    return { ...fallback, fetchNotice: "فشل الجلب التلقائي. يمكنك إدخال جميع البيانات يدويًا دون تعطيل الإضافة." };
-  } finally {
-    clearTimeout(timeout);
-  }
+  return {
+    ...fallback,
+    originalUrl: imported.originalUrl,
+    externalProductId: imported.externalProductId,
+    originalName: imported.name,
+    arabicName: imported.name,
+    description: imported.description,
+    priceJpy: imported.priceJpy?.toString() || "",
+    approxPriceSar: imported.approxPriceSar?.toString() || "",
+    imageUrls: imported.images.join("\n"),
+    category: imported.category,
+    brand: imported.brand,
+    productCondition: imported.condition,
+    availabilityStatus: imported.availabilityStatus,
+    fetchNotice: imported.notice,
+  };
 }
-
 function productDataFromForm(formData: FormData) {
   const originalUrl = assertUrl(requiredText(formData, "originalUrl", "رابط المنتج الأصلي"), "رابط المنتج الأصلي");
   const priceJpy = intOrNull(optionalText(formData, "priceJpy"));
   const approxPriceSar = numberOrNull(optionalText(formData, "approxPriceSar")) ?? (priceJpy ? Math.ceil(priceJpy * JPY_TO_SAR) : null);
-  const availabilityStatus = statusValue(optionalText(formData, "availabilityStatus"));
+  const requestedAvailabilityStatus = statusValue(optionalText(formData, "availabilityStatus"));
   const images = parseImages(optionalText(formData, "imageUrls"));
+  const availabilityStatus = requestedAvailabilityStatus === "AVAILABLE" && (!priceJpy || images.length === 0)
+    ? "NEEDS_REVIEW"
+    : requestedAvailabilityStatus;
 
   return {
     storeName: requiredText(formData, "storeName", "المتجر"),
