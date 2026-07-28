@@ -47,80 +47,57 @@ export async function fetchMercariProduct(inputUrl: string, jpyToSar: number): P
     url: safeUrl(url), httpStatus: null, contentType: "", challengeDetected: false,
     embeddedJsonFound: false, extractors: [], failures: [], pathHits: [],
   };
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-
-  try {
-    const response = await fetch(url, {
-      cache: "no-store", redirect: "follow", signal: controller.signal,
-      headers: {
-        accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "accept-language": "ja-JP,ja;q=0.9,en-US;q=0.8,en;q=0.7",
-        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Safari/537.36",
-      },
-    });
-    diagnostics.httpStatus = response.status;
-    diagnostics.contentType = response.headers.get("content-type") || "";
-    const html = (await response.text()).slice(0, MAX_HTML_BYTES);
-    diagnostics.challengeDetected = isChallenge(response.status, html);
-    if (!response.ok || !diagnostics.contentType.includes("text/html")) {
-      diagnostics.failures.push(`direct-fetch: HTTP ${response.status}; ${diagnostics.contentType || "unknown content type"}`);
-    }
-
-    const finalUrl = response.url || url;
-    const metaBundle = extractMetadata(html, finalUrl);
-    diagnostics.extractors.push(hasUsefulData(metaBundle.product) ? "metadata: product fields found" : "metadata: no product fields");
-
-    const embedded = extractEmbeddedData(html, finalUrl, metaBundle.product.priceJpy, diagnostics.pathHits);
-    diagnostics.embeddedJsonFound = embedded.foundJson;
-    diagnostics.extractors.push(...embedded.notes);
-    diagnostics.failures.push(...embedded.failures);
-
-    let bundle = mergeBundles(metaBundle, embedded.bundle);
-    if (missingFields(bundle.product).length > 0) {
-      const api = await extractWithMercariApi(extractMercariId(finalUrl));
-      diagnostics.extractors.push(api.note);
-      if (api.failure) diagnostics.failures.push(api.failure);
-      diagnostics.pathHits.push(...api.pathHits);
-      bundle = mergeBundles(api.bundle, bundle);
-    }
-    if (missingFields(bundle.product).length > 0) {
-      const scraper = await extractWithParsera(finalUrl);
-      diagnostics.extractors.push(scraper.note);
-      if (scraper.failure) diagnostics.failures.push(scraper.failure);
-      bundle = mergeBundles(bundle, scraper.bundle);
-    }
-
-    bundle.product.images = sanitizeImages(bundle.product.images, finalUrl);
-    if (!bundle.product.images.length) delete bundle.paths.images;
-    const missing = missingFields(bundle.product);
-    if (bundle.product.availabilityStatus === "NEEDS_REVIEW" || !bundle.product.priceJpy || !bundle.product.images.length) {
-      bundle.product.availabilityStatus = "NEEDS_REVIEW";
-      bundle.paths.availabilityStatus ||= "$derived.needsReview";
-    }
-
-    const notice = buildNotice(bundle.product, missing, diagnostics.challengeDetected);
-    logDiagnostics(diagnostics, bundle, missing);
-    return {
-      ...bundle.product,
-      originalUrl: finalUrl,
-      externalProductId: extractMercariId(finalUrl),
-      approxPriceSar: bundle.product.priceJpy ? Math.ceil(bundle.product.priceJpy * jpyToSar) : null,
-      notice,
-      diagnosticPaths: bundle.paths,
-    };
-  } catch (error) {
-    diagnostics.failures.push(`request: ${safeError(error)}`);
-    const bundle = emptyBundle();
-    logDiagnostics(diagnostics, bundle, missingFields(bundle.product));
-    return {
-      ...bundle.product, originalUrl: url, externalProductId: extractMercariId(url), approxPriceSar: null,
-      notice: `فشل جلب صفحة المنتج: ${safeError(error)}. حُفظت الحالة كمراجعة مطلوبة، ويمكن إدخال البيانات يدويًا.`,
-      diagnosticPaths: bundle.paths,
-    };
-  } finally {
-    clearTimeout(timeout);
+  let finalUrl = url;
+  let bundle = emptyBundle();
+  const api = await extractWithMercariApi(extractMercariId(url));
+  diagnostics.extractors.push(api.note);
+  if (api.failure) diagnostics.failures.push(api.failure);
+  diagnostics.pathHits.push(...api.pathHits);
+  bundle = mergeBundles(api.bundle, bundle);
+  if (missingFields(bundle.product).length > 0) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    try {
+      const response = await fetch(url, { cache: "no-store", redirect: "follow", signal: controller.signal, headers: { accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", "accept-language": "ja-JP,ja;q=0.9,en-US;q=0.8,en;q=0.7", "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Safari/537.36" } });
+      diagnostics.httpStatus = response.status;
+      diagnostics.contentType = response.headers.get("content-type") || "";
+      const html = (await response.text()).slice(0, MAX_HTML_BYTES);
+      diagnostics.challengeDetected = isMercariChallengePage(response.status, html);
+      finalUrl = response.url || url;
+      if (!response.ok || !diagnostics.contentType.includes("text/html")) diagnostics.failures.push(`direct-fetch: HTTP ${response.status}; ${diagnostics.contentType || "unknown content type"}`);
+      if (diagnostics.challengeDetected) {
+        diagnostics.extractors.push("html: challenge detected; all HTML metadata discarded");
+      } else {
+        const metaBundle = extractMetadata(html, finalUrl);
+        diagnostics.extractors.push(hasUsefulData(metaBundle.product) ? "metadata: product fields found" : "metadata: no product fields");
+        const embedded = extractEmbeddedData(html, finalUrl, metaBundle.product.priceJpy, diagnostics.pathHits);
+        diagnostics.embeddedJsonFound = embedded.foundJson;
+        diagnostics.extractors.push(...embedded.notes);
+        diagnostics.failures.push(...embedded.failures);
+        bundle = mergeBundles(bundle, mergeBundles(metaBundle, embedded.bundle));
+      }
+    } catch (error) { diagnostics.failures.push(`direct-fetch: ${safeError(error)}`); }
+    finally { clearTimeout(timeout); }
   }
+  if (missingFields(bundle.product).length > 0) {
+    const scraper = await extractWithParsera(finalUrl);
+    diagnostics.extractors.push(scraper.note);
+    if (scraper.failure) diagnostics.failures.push(scraper.failure);
+    bundle = mergeBundles(bundle, scraper.bundle);
+  }
+  bundle.product.name = safeProductText(bundle.product.name);
+  bundle.product.description = safeProductText(bundle.product.description);
+  bundle.product.images = sanitizeMercariImages(bundle.product.images, finalUrl);
+  if (diagnostics.challengeDetected && !hasUsefulData(api.bundle.product)) bundle = emptyBundle();
+  if (!bundle.product.images.length) delete bundle.paths.images;
+  const missing = missingFields(bundle.product);
+  if (bundle.product.availabilityStatus === "NEEDS_REVIEW" || !bundle.product.priceJpy || !bundle.product.images.length) {
+    bundle.product.availabilityStatus = "NEEDS_REVIEW";
+    bundle.paths.availabilityStatus ||= "$derived.needsReview";
+  }
+  const notice = buildNotice(bundle.product, missing, diagnostics.challengeDetected);
+  logDiagnostics(diagnostics, bundle, missing);
+  return { ...bundle.product, originalUrl: finalUrl, externalProductId: extractMercariId(finalUrl), approxPriceSar: bundle.product.priceJpy ? Math.ceil(bundle.product.priceJpy * jpyToSar) : null, notice, diagnosticPaths: bundle.paths };
 }
 
 function validateMercariUrl(value: string) {
@@ -316,7 +293,7 @@ function extractFlexibleProduct(values: WalkedValue[], baseUrl: string, expected
       if (candidate && score >= 5 && score > priceScore) { bundle.product.priceJpy = candidate; bundle.paths.priceJpy = entry.path; priceScore = score; }
     }
     if (/^(?:photos?|images?|imageurls?|thumbnails?|photo_paths)$/.test(normalizedKey)) {
-      const images = sanitizeImages(imageValues(entry.value, baseUrl), baseUrl);
+      const images = sanitizeMercariImages(imageValues(entry.value, baseUrl), baseUrl);
       const score = context + (normalizedKey.startsWith("photo") ? 3 : 0) + images.length;
       if (images.length && score > imageScore) { bundle.product.images = images; bundle.paths.images = entry.path; imageScore = score; }
     }
@@ -371,7 +348,7 @@ async function extractWithMercariApi(itemId: string) {
     include_non_ui_item_attributes: true, include_item_attributes_sections: true, include_auction: true,
   };
   Object.entries(requestPayload).forEach(([key, value]) => endpoint.searchParams.set(key, String(value)));
-  console.info("[mercari-api-request]", { endpoint: `${endpoint.origin}${endpoint.pathname}`, method: "GET", payload: requestPayload });
+  console.info("[mercari-api-runtime]", { webCrypto: Boolean(globalThis.crypto?.subtle), randomUUID: typeof globalThis.crypto?.randomUUID === "function", textEncoder: typeof TextEncoder === "function" });
 
   try {
     const dpop = await createDpopProof(endpoint.toString(), "GET");
@@ -382,7 +359,8 @@ async function extractWithMercariApi(itemId: string) {
     });
     const contentType = response.headers.get("content-type") || "";
     const responseText = await response.text();
-    console.info("[mercari-api-response]", { status: response.status, contentType, bodySample: safeBodySample(responseText) });
+    const errorCode = response.ok ? "" : safeApiErrorCode(responseText);
+    console.info("[mercari-api-response]", { status: response.status, errorCode });
     if (!response.ok || !contentType.includes("application/json")) {
       return { bundle: emptyBundle(), note: `mercari-api: HTTP ${response.status}`, failure: `mercari-api: HTTP ${response.status}; ${safeBodySample(responseText)}`, pathHits: [] as PathHit[] };
     }
@@ -415,12 +393,15 @@ async function extractWithMercariApi(itemId: string) {
 }
 
 async function createDpopProof(url: string, method: string) {
+  if (!globalThis.crypto?.subtle) throw new Error("dpop_webcrypto_unavailable");
+  if (typeof globalThis.crypto.randomUUID !== "function") throw new Error("dpop_randomuuid_unavailable");
   const keys = await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, ["sign", "verify"]);
   const publicJwk = await crypto.subtle.exportKey("jwk", keys.publicKey);
-  const encode = (value: unknown) => Buffer.from(JSON.stringify(value)).toString("base64url");
+  const encodeBytes = (bytes: Uint8Array) => { let binary = ""; bytes.forEach(byte => { binary += String.fromCharCode(byte); }); return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, ""); };
+  const encode = (value: unknown) => encodeBytes(new TextEncoder().encode(JSON.stringify(value)));
   const header = encode({ typ: "dpop+jwt", alg: "ES256", jwk: { kty: publicJwk.kty, crv: publicJwk.crv, x: publicJwk.x, y: publicJwk.y } });
   const payload = encode({ htu: url, htm: method.toUpperCase(), iat: Math.floor(Date.now() / 1000), jti: crypto.randomUUID() });
-  const signature = Buffer.from(await crypto.subtle.sign({ name: "ECDSA", hash: "SHA-256" }, keys.privateKey, Buffer.from(`${header}.${payload}`))).toString("base64url");
+  const signature = encodeBytes(new Uint8Array(await crypto.subtle.sign({ name: "ECDSA", hash: "SHA-256" }, keys.privateKey, new TextEncoder().encode(`${header}.${payload}`))));
   return `${header}.${payload}.${signature}`;
 }
 
@@ -482,14 +463,16 @@ function availability(value: unknown): MercariAvailability {
   if (/hidden|private|非公開|公開停止/.test(valueText)) return "HIDDEN";
   return "NEEDS_REVIEW";
 }
-function sanitizeImages(images: string[], baseUrl: string) {
-  const blocked = /(?:logo|favicon|avatar|placeholder|no[-_]?image|default[-_]?image|mercari[_-]?logo|\/assets\/|\/members\/|\/icons?\/)/i;
+export function sanitizeMercariImages(images: string[], baseUrl: string) {
+  const blocked = /(?:logo|favicon|avatar|placeholder|no[-_]?image|default[-_]?image|mercari[_-]?logo|\/assets\/|\/members\/|\/icons?\/|challenge|cloudflare|cf-chl)/i;
   return Array.from(new Set(images.map(image => absolute(image, baseUrl)).filter(image => {
     if (!image || blocked.test(image)) return false;
     try {
       const url = new URL(image);
-      if (!/(?:mercdn\.net|mercari\.com)$/i.test(url.hostname) && !/\.(?:avif|webp|png|jpe?g)(?:$|\?)/i.test(url.pathname + url.search)) return false;
-      return /mercdn\.net$/i.test(url.hostname) ? /\/item\/detail\/(?:orig|photos)\//i.test(url.pathname) : true;
+      if (url.toString() === new URL(baseUrl).toString()) return false;
+      const hasImageExtension = /\.(?:avif|webp|png|jpe?g|gif)(?:$|\?)/i.test(url.pathname + url.search);
+      const isMercariProductCdn = /mercdn\.net$/i.test(url.hostname) && /\/item\/detail\/(?:orig|photos)\//i.test(url.pathname);
+      return hasImageExtension || isMercariProductCdn;
     } catch { return false; }
   })));
 }
@@ -504,6 +487,7 @@ function missingFields(product: ProductData) {
   return result;
 }
 function buildNotice(product: ProductData, missing: string[], challenge: boolean) {
+  if (challenge && !hasUsefulData(product)) return "تعذر جلب بيانات المنتج من Mercari في بيئة الإنتاج بسبب صفحة تحقق. يمكنك إكمال البيانات يدويًا أو المحاولة لاحقًا.";
   const notice = hasUsefulData(product) ? ["تم جلب البيانات للمعاينة فقط. راجعها وعدّلها قبل الحفظ."] : ["تعذر استخراج بيانات المنتج من جميع المسارات المتاحة."];
   if (missing.length) notice.push(`الحقول التي لم يُعثر عليها: ${missing.join("، ")}. سيُحفظ المنتج كمسودة تحتاج مراجعة ولن يُنشر.`);
   if (!product.images.length) notice.push("لم يتم العثور على صور منتج صالحة؛ تُركت الصور فارغة ولم يُستخدم شعار أو صورة افتراضية.");
@@ -540,7 +524,17 @@ function cleanTitle(value: string) { return clean(value).replace(/\s+by\s+(?:Mer
 function absolute(value: string, baseUrl: string) { try { const url = new URL(decodeHtml(value), baseUrl); return /^https?:$/.test(url.protocol) ? url.toString() : ""; } catch { return ""; } }
 function decodeHtml(value: string) { return value.replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#(?:39|x27);/gi, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").trim(); }
 function extractMercariId(value: string) { try { const path = new URL(value).pathname; return path.match(/(?:item|items)\/([A-Za-z0-9_-]+)/)?.[1] || path.match(/\/m([0-9]+)/)?.[1] || ""; } catch { return ""; } }
-function isChallenge(status: number, html: string) { if ([403, 429, 503].includes(status)) return true; const sample = clean(html.slice(0, 30_000)); return /just a moment|verify you are human|attention required|access denied|cf-chl|captcha challenge|アクセスが集中しています|ロボットではない/i.test(sample); }
+const BLOCKED_PRODUCT_TEXT = /just a moment|access denied|checking your browser|cloudflare|verify(?:ing)? (?:you are human|your browser)|verification required|attention required/i;
+export function isSafeMercariProductText(value: string) { return Boolean(clean(value)) && !BLOCKED_PRODUCT_TEXT.test(clean(value)); }
+function safeProductText(value: string) { return isSafeMercariProductText(value) ? clean(value) : ""; }
+export function isMercariChallengePage(status: number, html: string) {
+  if ([403, 429, 503].includes(status)) return true;
+  const sample = clean(html.slice(0, 100_000));
+  const explicitChallenge = /just a moment|access denied|checking your browser|cloudflare|verification|verify you are human|cf-chl|challenge-platform|captcha challenge/i.test(sample);
+  const hasExpectedProductData = /__next_f\.push|__NEXT_DATA__|application\/ld\+json|product:price|item\/detail\/(?:orig|photos)|"item(?:Name|Price|Description)"|"photos?"/i.test(sample);
+  return explicitChallenge || (!hasExpectedProductData && /<html|<!doctype/i.test(sample));
+}
+function safeApiErrorCode(body: string) { try { const parsed = JSON.parse(body) as Record<string, unknown>; return clean(text(pick(parsed, ["code", "errorCode", "result", "status", "message"]))).slice(0, 80) || "unknown"; } catch { return "non_json_response"; } }
 function safeUrl(value: string) { try { const url = new URL(value); return `${url.origin}${url.pathname}`; } catch { return "invalid-url"; } }
 function safeError(error: unknown) { return (error instanceof Error ? error.message : String(error)).replace(/[A-Za-z0-9_-]{24,}/g, "[redacted]").slice(0, 240); }
 function logDiagnostics(diagnostics: Diagnostics, bundle: ExtractedBundle, missing: string[]) {

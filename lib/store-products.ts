@@ -1,7 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { createPurchaseOrder } from "@/lib/purchase-orders";
-import { fetchMercariProduct } from "@/lib/mercari-import";
+import { fetchMercariProduct, isSafeMercariProductText, sanitizeMercariImages } from "@/lib/mercari-import";
 
 export const STORE_PRODUCT_STATUSES = [
   { value: "AVAILABLE", label: "متوفر" },
@@ -46,6 +46,11 @@ function requiredText(formData: FormData, key: string, label: string) {
 function optionalText(formData: FormData, key: string) {
   const value = String(formData.get(key) || "").trim();
   return value || null;
+}
+
+function safeOptionalProductText(formData: FormData, key: string) {
+  const value = optionalText(formData, key);
+  return value && isSafeMercariProductText(value) ? value : null;
 }
 
 function assertUrl(value: string, label: string) {
@@ -176,7 +181,7 @@ function productDataFromForm(formData: FormData) {
   const priceJpy = intOrNull(optionalText(formData, "priceJpy"));
   const approxPriceSar = numberOrNull(optionalText(formData, "approxPriceSar")) ?? (priceJpy ? Math.ceil(priceJpy * JPY_TO_SAR) : null);
   const requestedAvailabilityStatus = statusValue(optionalText(formData, "availabilityStatus"));
-  const images = parseImages(optionalText(formData, "imageUrls"));
+  const images = sanitizeMercariImages(parseImages(optionalText(formData, "imageUrls")), originalUrl);
   const availabilityStatus = requestedAvailabilityStatus === "AVAILABLE" && (!priceJpy || images.length === 0)
     ? "NEEDS_REVIEW"
     : requestedAvailabilityStatus;
@@ -185,9 +190,13 @@ function productDataFromForm(formData: FormData) {
     storeName: requiredText(formData, "storeName", "المتجر"),
     originalUrl,
     externalProductId: optionalText(formData, "externalProductId"),
-    arabicName: requiredText(formData, "arabicName", "الاسم العربي"),
-    originalName: optionalText(formData, "originalName"),
-    description: optionalText(formData, "description"),
+    arabicName: (() => {
+      const value = requiredText(formData, "arabicName", "الاسم العربي");
+      if (!isSafeMercariProductText(value)) throw new Error("اسم المنتج مأخوذ من صفحة حماية وغير صالح للحفظ.");
+      return value;
+    })(),
+    originalName: safeOptionalProductText(formData, "originalName"),
+    description: safeOptionalProductText(formData, "description"),
     priceJpy,
     approxPriceSar: approxPriceSar === null ? null : new Prisma.Decimal(approxPriceSar.toFixed(2)),
     imageUrlsJson: images.length > 0 ? JSON.stringify(images) : null,
