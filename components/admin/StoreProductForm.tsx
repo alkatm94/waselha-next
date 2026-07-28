@@ -29,6 +29,12 @@ type PreviewLike = {
   description: string;
   priceJpy: string;
   approxPriceSar: string;
+  originalPrice: string;
+  originalCurrency: string;
+  priceSource: string;
+  itemKind: string;
+  variantId: string;
+  sourceAvailabilityStatus: string;
   imageUrls: string;
   category: string;
   brand: string;
@@ -58,6 +64,12 @@ function productToDefaults(product?: ProductLike | null, preview?: PreviewLike |
     description: product?.description || preview?.description || "",
     priceJpy: product?.priceJpy?.toString() || preview?.priceJpy || "",
     approxPriceSar: product?.approxPriceSar?.toString() || preview?.approxPriceSar || "",
+    originalPrice: preview?.originalPrice || "",
+    originalCurrency: preview?.originalCurrency || "",
+    priceSource: preview?.priceSource || "",
+    itemKind: preview?.itemKind || "",
+    variantId: preview?.variantId || "",
+    sourceAvailabilityStatus: preview?.sourceAvailabilityStatus || "NEEDS_REVIEW",
     imageUrls,
     category: product?.category || preview?.category || "",
     brand: product?.brand || preview?.brand || "",
@@ -84,7 +96,8 @@ function StoreProductFormFields({ product, preview, action, submitLabel }: { pro
       {product?.id && <input type="hidden" name="id" value={product.id} />}
       <section className="rounded-lg border border-[var(--border)] bg-white p-5 shadow-sm">
         {preview?.fetchNotice && <p className="mb-5 rounded-lg bg-[var(--warning-bg)] p-3 text-sm font-bold text-[var(--warning)]">{preview.fetchNotice}</p>}
-        <h2 className="text-xl font-bold text-[var(--brand-navy)]">بيانات المنتج</h2>
+{preview?.itemKind === "SHOPS" && <div className="mb-5 grid gap-3 rounded-lg border border-[var(--border)] bg-[var(--background)] p-4 text-sm sm:grid-cols-2"><p><strong>نوع المنتج:</strong> Mercari Shops</p><p className="latin-text" dir="ltr"><strong>Variant:</strong> {defaults.variantId || "لم يُحدّد"}</p><p><strong>السعر الأصلي:</strong> {defaults.originalPrice ? `${defaults.originalPrice} ${defaults.originalCurrency}` : "غير متاح"}</p><p><strong>مصدر السعر:</strong> {defaults.priceSource || "غير معروف"}</p><p><strong>التوفر في Mercari:</strong> {defaults.sourceAvailabilityStatus}</p>{defaults.originalCurrency && defaults.originalCurrency !== "JPY" && <p className="sm:col-span-2 font-bold text-[var(--warning)]">هذا السعر للمعاينة فقط ولا يُحفظ كسعر بالين، وسيبقى المنتج بحاجة إلى مراجعة.</p>}</div>}
+                <h2 className="text-xl font-bold text-[var(--brand-navy)]">بيانات المنتج</h2>
         <div className="mt-5 grid gap-4 md:grid-cols-2">
           <label className="grid gap-2 text-sm font-bold">المتجر<select name="storeName" defaultValue={defaults.storeName} className="input">{STORE_NAMES.map((store) => <option key={store} value={store}>{store}</option>)}</select></label>
           <label className="grid gap-2 text-sm font-bold">معرف المنتج الخارجي<input name="externalProductId" defaultValue={defaults.externalProductId} className="input latin-text" dir="ltr" /></label>

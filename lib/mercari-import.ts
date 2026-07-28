@@ -5,19 +5,34 @@ const MAX_HTML_BYTES = 2_500_000;
 const MAX_PATH_LOGS = 120;
 
 export type MercariAvailability = "AVAILABLE" | "SOLD" | "HIDDEN" | "NEEDS_REVIEW";
+export type MercariItemKind = "MARKETPLACE" | "SHOPS";
+export type MercariPriceSource = "MERCARI_MARKETPLACE_API" | "MERCARI_SHOPS_RSC" | "HTML_METADATA" | "PARSERA" | "UNKNOWN";
+
+export type NormalizedMercariUrl = {
+  originalUrl: string;
+  normalizedUrl: string;
+  pathItemId: string;
+  variantId: string;
+  apiItemId: string;
+};
 
 type ProductData = {
   name: string;
   description: string;
+  price: number | null;
+  priceCurrency: string;
+  priceSource: MercariPriceSource;
   priceJpy: number | null;
   images: string[];
   category: string;
   brand: string;
   condition: string;
   availabilityStatus: MercariAvailability;
+  itemKind: MercariItemKind;
+  variantId: string;
 };
 
-type ProductPaths = Partial<Record<"name" | "description" | "priceJpy" | "images" | "category" | "brand" | "condition" | "availabilityStatus", string>>;
+type ProductPaths = Partial<Record<"name" | "description" | "price" | "priceCurrency" | "priceJpy" | "images" | "category" | "brand" | "condition" | "availabilityStatus" | "variantId", string>>;
 type ExtractedBundle = { product: ProductData; paths: ProductPaths };
 type JsonSource = { path: string; value: unknown };
 type PathHit = { path: string; key: string; valueType: string; sample: string };
@@ -28,6 +43,8 @@ export type MercariImportResult = ProductData & {
   approxPriceSar: number | null;
   notice: string;
   diagnosticPaths: ProductPaths;
+  selectedVariantId: string;
+  sourceAvailabilityStatus: MercariAvailability;
 };
 
 type Diagnostics = {
@@ -42,14 +59,15 @@ type Diagnostics = {
 };
 
 export async function fetchMercariProduct(inputUrl: string, jpyToSar: number): Promise<MercariImportResult> {
-  const url = validateMercariUrl(inputUrl);
+  const urlInfo = normalizeMercariProductUrl(inputUrl);
+  const url = urlInfo.originalUrl;
   const diagnostics: Diagnostics = {
     url: safeUrl(url), httpStatus: null, contentType: "", challengeDetected: false,
     embeddedJsonFound: false, extractors: [], failures: [], pathHits: [],
   };
   let finalUrl = url;
   let bundle = emptyBundle();
-  const api = await extractWithMercariApi(extractMercariId(url));
+  const api = await extractWithMercariApi(urlInfo.apiItemId);
   diagnostics.extractors.push(api.note);
   if (api.failure) diagnostics.failures.push(api.failure);
   diagnostics.pathHits.push(...api.pathHits);
@@ -70,11 +88,12 @@ export async function fetchMercariProduct(inputUrl: string, jpyToSar: number): P
       } else {
         const metaBundle = extractMetadata(html, finalUrl);
         diagnostics.extractors.push(hasUsefulData(metaBundle.product) ? "metadata: product fields found" : "metadata: no product fields");
-        const embedded = extractEmbeddedData(html, finalUrl, metaBundle.product.priceJpy, diagnostics.pathHits);
+        const embedded = extractEmbeddedData(html, finalUrl, metaBundle.product.priceJpy, diagnostics.pathHits, urlInfo);
         diagnostics.embeddedJsonFound = embedded.foundJson;
         diagnostics.extractors.push(...embedded.notes);
         diagnostics.failures.push(...embedded.failures);
-        bundle = mergeBundles(bundle, mergeBundles(metaBundle, embedded.bundle));
+        const htmlBundle = isShopsProduct(urlInfo) ? mergeBundles(embedded.bundle, metaBundle) : mergeBundles(metaBundle, embedded.bundle);
+        bundle = mergeBundles(bundle, htmlBundle);
       }
     } catch (error) { diagnostics.failures.push(`direct-fetch: ${safeError(error)}`); }
     finally { clearTimeout(timeout); }
@@ -91,13 +110,26 @@ export async function fetchMercariProduct(inputUrl: string, jpyToSar: number): P
   if (diagnostics.challengeDetected && !hasUsefulData(api.bundle.product)) bundle = emptyBundle();
   if (!bundle.product.images.length) delete bundle.paths.images;
   const missing = missingFields(bundle.product);
+  const sourceAvailabilityStatus = bundle.product.availabilityStatus;
   if (bundle.product.availabilityStatus === "NEEDS_REVIEW" || !bundle.product.priceJpy || !bundle.product.images.length) {
     bundle.product.availabilityStatus = "NEEDS_REVIEW";
     bundle.paths.availabilityStatus ||= "$derived.needsReview";
   }
   const notice = buildNotice(bundle.product, missing, diagnostics.challengeDetected);
   logDiagnostics(diagnostics, bundle, missing);
-  return { ...bundle.product, originalUrl: finalUrl, externalProductId: extractMercariId(finalUrl), approxPriceSar: bundle.product.priceJpy ? Math.ceil(bundle.product.priceJpy * jpyToSar) : null, notice, diagnosticPaths: bundle.paths };
+  return { ...bundle.product, originalUrl: finalUrl, externalProductId: urlInfo.pathItemId || extractMercariId(finalUrl), approxPriceSar: bundle.product.priceJpy ? Math.ceil(bundle.product.priceJpy * jpyToSar) : null, notice, diagnosticPaths: bundle.paths, selectedVariantId: bundle.product.variantId, sourceAvailabilityStatus };
+}
+
+export function normalizeMercariProductUrl(value: string): NormalizedMercariUrl {
+  const originalUrl = validateMercariUrl(value);
+  const parsed = new URL(originalUrl);
+  const pathItemId = parsed.pathname.match(/(?:item|items)\/([A-Za-z0-9_-]+)/)?.[1] || parsed.pathname.match(/\/m([0-9]+)/)?.[1] || "";
+  const variantId = parsed.searchParams.get("variant")?.trim() || "";
+  if (/^japan\.us\.mercari\.com$/i.test(parsed.hostname) && !/^[0-9a-f]{8}-[0-9a-f-]{27,}$/i.test(pathItemId)) throw new Error("رابط Mercari Shops لا يحتوي UUID صالحًا.");
+  parsed.search = "";
+  parsed.hash = "";
+  const apiItemId = [variantId, pathItemId].find(id => /^m\d+$/i.test(id)) || "";
+  return { originalUrl, normalizedUrl: parsed.toString(), pathItemId, variantId, apiItemId };
 }
 
 function validateMercariUrl(value: string) {
@@ -110,7 +142,7 @@ function validateMercariUrl(value: string) {
 }
 
 function emptyProduct(): ProductData {
-  return { name: "", description: "", priceJpy: null, images: [], category: "", brand: "", condition: "", availabilityStatus: "NEEDS_REVIEW" };
+  return { name: "", description: "", price: null, priceCurrency: "", priceSource: "UNKNOWN", priceJpy: null, images: [], category: "", brand: "", condition: "", availabilityStatus: "NEEDS_REVIEW", itemKind: "MARKETPLACE", variantId: "" };
 }
 function emptyBundle(): ExtractedBundle { return { product: emptyProduct(), paths: {} }; }
 function hasUsefulData(product: ProductData) { return Boolean(product.name || product.priceJpy || product.description || product.images.length); }
@@ -119,12 +151,17 @@ function mergeBundles(primary: ExtractedBundle, secondary: ExtractedBundle): Ext
   const product: ProductData = {
     name: primary.product.name || secondary.product.name,
     description: primary.product.description || secondary.product.description,
+    price: primary.product.price ?? secondary.product.price,
+    priceCurrency: primary.product.priceCurrency || secondary.product.priceCurrency,
+    priceSource: primary.product.priceSource !== "UNKNOWN" ? primary.product.priceSource : secondary.product.priceSource,
     priceJpy: primary.product.priceJpy ?? secondary.product.priceJpy,
     images: [...primary.product.images, ...secondary.product.images],
     category: primary.product.category || secondary.product.category,
     brand: primary.product.brand || secondary.product.brand,
     condition: primary.product.condition || secondary.product.condition,
     availabilityStatus: primary.product.availabilityStatus !== "NEEDS_REVIEW" ? primary.product.availabilityStatus : secondary.product.availabilityStatus,
+    itemKind: primary.product.itemKind === "SHOPS" || secondary.product.itemKind === "SHOPS" ? "SHOPS" : "MARKETPLACE",
+    variantId: primary.product.variantId || secondary.product.variantId,
   };
   const paths: ProductPaths = { ...secondary.paths, ...primary.paths };
   if (!primary.product.images.length && secondary.product.images.length) paths.images = secondary.paths.images;
@@ -133,11 +170,13 @@ function mergeBundles(primary: ExtractedBundle, secondary: ExtractedBundle): Ext
 
 function extractMetadata(html: string, baseUrl: string): ExtractedBundle {
   const name = cleanTitle(meta(html, "og:title") || meta(html, "twitter:title") || capture(html, /<title[^>]*>([\s\S]*?)<\/title>/i));
-  const priceJpy = priceValue(meta(html, "product:price:amount") || meta(html, "og:price:amount"));
+  const price = priceValue(meta(html, "product:price:amount") || meta(html, "og:price:amount"));
+  const priceCurrency = clean(meta(html, "product:price:currency") || meta(html, "og:price:currency")).toUpperCase();
+  const priceJpy = priceCurrency === "JPY" ? price : null;
   const images = [meta(html, "og:image"), meta(html, "twitter:image"), ...Array.from(html.matchAll(/<link[^>]+rel=["']preload["'][^>]+href=["']([^"']*\/item\/detail\/orig\/photos\/[^"']+)["']/gi), match => match[1])]
     .map(value => absolute(value, baseUrl)).filter(Boolean);
   return {
-    product: { ...emptyProduct(), name, priceJpy, images },
+    product: { ...emptyProduct(), name, price, priceCurrency, priceSource: price ? "HTML_METADATA" : "UNKNOWN", priceJpy, images },
     paths: {
       ...(name ? { name: "$html.meta[og:title]" } : {}),
       ...(priceJpy ? { priceJpy: "$html.meta[product:price:amount]" } : {}),
@@ -146,7 +185,7 @@ function extractMetadata(html: string, baseUrl: string): ExtractedBundle {
   };
 }
 
-function extractEmbeddedData(html: string, baseUrl: string, expectedPrice: number | null, pathHits: PathHit[]) {
+function extractEmbeddedData(html: string, baseUrl: string, expectedPrice: number | null, pathHits: PathHit[], urlInfo?: NormalizedMercariUrl) {
   const sources: JsonSource[] = [];
   const failures: string[] = [];
   const notes: string[] = [];
@@ -187,12 +226,20 @@ function extractEmbeddedData(html: string, baseUrl: string, expectedPrice: numbe
   });
 
   const walked = walkSources(sources, expectedPrice, pathHits);
-  const bundle = extractFlexibleProduct(walked, baseUrl, expectedPrice);
+  const flexibleBundle = extractFlexibleProduct(walked, baseUrl, expectedPrice);
+  const shopsBundle = urlInfo && isShopsProduct(urlInfo) ? extractShopsProduct(walked, baseUrl, urlInfo) : emptyBundle();
+  const shopsFlightBundle = urlInfo && isShopsProduct(urlInfo) ? extractShopsFlightProduct(sources, baseUrl, urlInfo) : emptyBundle();
+  const bundle = mergeBundles(shopsFlightBundle, mergeBundles(shopsBundle, flexibleBundle));
   notes.push(flightCount ? `next-flight: ${flightCount} payload(s) decoded` : "next-flight: not found");
   notes.push(foundJson ? `embedded-json: ${decodedValueCount} value(s) decoded` : "embedded-json: not found");
   return { bundle, foundJson, notes, failures };
 }
 
+export function extractMercariEmbeddedProduct(html: string, url: string) {
+  const urlInfo = normalizeMercariProductUrl(url);
+  const pathHits: PathHit[] = [];
+  return extractEmbeddedData(html, urlInfo.originalUrl, null, pathHits, urlInfo).bundle.product;
+}
 function extractNextFlightCalls(script: string) {
   const results: string[] = [];
   const marker = "self.__next_f.push(";
@@ -283,14 +330,18 @@ function extractFlexibleProduct(values: WalkedValue[], baseUrl: string, expected
   let descriptionScore = -1;
   let conditionScore = -1;
   let statusScore = -1;
+  const requiresExplicitJpy = /(?:^|\.)japan\.us\.mercari\.com$/i.test(new URL(baseUrl).hostname);
   for (const entry of values) {
     if (isNonProductPath(entry.path, entry.value)) continue;
     const normalizedKey = entry.key.toLowerCase();
     const context = contextScore(entry.parent, expectedPrice);
     if (/^(?:price|itemprice|pricejpy|amount|lowprice)$/.test(normalizedKey)) {
+      const parent = entry.parent ?? {};
+      const currency = clean(text(parent.currency ?? parent.currencyCode ?? parent.currency_code)).toUpperCase();
+      if (requiresExplicitJpy && currency !== 'JPY' && currency !== '\u00A5') continue;
       const candidate = priceValue(entry.value);
       const score = context + (normalizedKey.includes("item") ? 3 : 0) + (candidate === expectedPrice ? 6 : 0);
-      if (candidate && score >= 5 && score > priceScore) { bundle.product.priceJpy = candidate; bundle.paths.priceJpy = entry.path; priceScore = score; }
+      if (candidate && score >= 5 && score > priceScore) { bundle.product.price = candidate; bundle.product.priceCurrency = "JPY"; bundle.product.priceSource = "HTML_METADATA"; bundle.product.priceJpy = candidate; bundle.paths.price = entry.path; bundle.paths.priceCurrency = `${entry.path}.currency`; bundle.paths.priceJpy = entry.path; priceScore = score; }
     }
     if (/^(?:photos?|images?|imageurls?|thumbnails?|photo_paths)$/.test(normalizedKey)) {
       const images = sanitizeMercariImages(imageValues(entry.value, baseUrl), baseUrl);
@@ -323,6 +374,154 @@ function extractFlexibleProduct(values: WalkedValue[], baseUrl: string, expected
   return bundle;
 }
 
+function extractShopsFlightProduct(sources: JsonSource[], baseUrl: string, urlInfo: NormalizedMercariUrl): ExtractedBundle {
+  const bundle = emptyBundle();
+  bundle.product.itemKind = "SHOPS";
+  const payloads = sources.filter((source): source is JsonSource & { value: string } => typeof source.value === "string").map(source => source.value);
+  const textBlob = payloads.join("\n");
+  const escapedItemId = urlInfo.pathItemId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const variantIds = Array.from(new Set(Array.from(textBlob.matchAll(/"variantId":"([0-9a-f-]{36})"/gi), match => match[1])));
+  const selectedVariantId = urlInfo.variantId || (variantIds.length === 1 ? variantIds[0] : "");
+  bundle.product.variantId = selectedVariantId;
+
+  const itemBlock = payloads.find(payload => new RegExp(`"itemId":"${escapedItemId}"`).test(payload) && payload.includes('"$typeName":"bff.common.Price"')) || "";
+  const priceMatch = itemBlock.match(/"price":\{[^{}]*"currencyCode":"([A-Z]{3})"[^{}]*"formattedAmount":"([0-9.,]+)"[^{}]*\}/i);
+  if (priceMatch) {
+    const price = numericPrice(priceMatch[2]);
+    const currency = priceMatch[1].toUpperCase();
+    bundle.product.price = price;
+    bundle.product.priceCurrency = currency;
+    bundle.product.priceSource = "MERCARI_SHOPS_RSC";
+    bundle.product.priceJpy = currency === "JPY" && price ? Math.round(price) : null;
+    bundle.paths.price = "$nextFlight.item.price.formattedAmount";
+    bundle.paths.priceCurrency = "$nextFlight.item.price.currencyCode";
+    if (bundle.product.priceJpy) bundle.paths.priceJpy = bundle.paths.price;
+  }
+  const categoryMatch = itemBlock.match(/"category":"([^"]+)"/);
+  if (categoryMatch) { bundle.product.category = clean(categoryMatch[1]); bundle.paths.category = "$nextFlight.item.category"; }
+
+  const mediaBlock = payloads.find(payload => new RegExp(`"itemId":"${escapedItemId}"`).test(payload) && payload.includes('"urls":[')) || "";
+  const titleMatch = mediaBlock.match(/"summaryTitle":"([^"]+)"/);
+  if (titleMatch) { bundle.product.name = cleanTitle(titleMatch[1]); bundle.paths.name = "$nextFlight.item.summaryTitle"; }
+  const urlsMatch = mediaBlock.match(/"urls":(\[[^\]]*\])/);
+  if (urlsMatch) {
+    try {
+      bundle.product.images = sanitizeMercariImages(JSON.parse(urlsMatch[1]) as string[], baseUrl).filter(image => /mercari-shops-static\.com$/i.test(new URL(image).hostname));
+      if (bundle.product.images.length) bundle.paths.images = "$nextFlight.item.urls";
+    } catch { /* malformed image list is ignored */ }
+  }
+
+  const descriptionPayload = payloads.find(payload => payload.length > 120 && /【Description】|【Product Details】|Condition Rank/i.test(payload) && !payload.includes('similar_items')) || "";
+  if (descriptionPayload && isSafeMercariProductText(descriptionPayload)) { bundle.product.description = clean(descriptionPayload); bundle.paths.description = "$nextFlight.item.description"; }
+  const conditionMatch = textBlob.match(/"children":"Item condition"[\s\S]{0,600}?"children":"([^"]+)"/i);
+  if (conditionMatch) { bundle.product.condition = clean(conditionMatch[1]); bundle.paths.condition = "$nextFlight.item.condition"; }
+  const brandMatch = textBlob.match(/"children":"Brand"[\s\S]{0,600}?"children":"([^"]+)"/i);
+  if (brandMatch) { bundle.product.brand = clean(brandMatch[1]); bundle.paths.brand = "$nextFlight.item.brand"; }
+
+  if (selectedVariantId) {
+    const escapedVariant = selectedVariantId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const actionBlock = payloads.find(payload => new RegExp(`"itemId":"${escapedItemId}"[\\s\\S]{0,500}"variantId":"${escapedVariant}"`).test(payload) && payload.includes('buttonAction')) || "";
+    if (/"enabled":true/.test(actionBlock)) bundle.product.availabilityStatus = "AVAILABLE";
+    else if (/"enabled":false/.test(actionBlock) || /sold out|out of stock/i.test(actionBlock)) bundle.product.availabilityStatus = "SOLD";
+    bundle.paths.variantId = "$nextFlight.item.variantOption.variantId";
+  }
+  if (!selectedVariantId && variantIds.length > 1) {
+    bundle.product.price = null; bundle.product.priceCurrency = ""; bundle.product.priceSource = "UNKNOWN"; bundle.product.priceJpy = null; bundle.product.images = [];
+    bundle.product.availabilityStatus = "NEEDS_REVIEW";
+  }
+  return bundle;
+}
+function isShopsProduct(urlInfo: NormalizedMercariUrl) {
+  return /^[0-9a-f]{8}-[0-9a-f-]{27,}$/i.test(urlInfo.pathItemId);
+}
+
+function extractShopsProduct(values: WalkedValue[], baseUrl: string, urlInfo: NormalizedMercariUrl): ExtractedBundle {
+  const bundle = emptyBundle();
+  bundle.product.itemKind = "SHOPS";
+  const parentPath = (path: string) => path.replace(/(?:\.[^.\[]+|\[\d+\])$/, "");
+  const itemMarkers = values.filter(entry => entry.value === urlInfo.pathItemId || (entry.key.toLowerCase() === "itemtype" && text(entry.value).toUpperCase() === "ITEM_TYPE_SHOPS"));
+  const itemPrefixes = Array.from(new Set(itemMarkers.map(entry => parentPath(entry.path))));
+  const variantEntries = values.filter(entry => /^(?:variantid|variant_id)$/i.test(entry.key) && /^[0-9a-f-]{36}$/i.test(text(entry.value)));
+  const variantIds = Array.from(new Set(variantEntries.map(entry => text(entry.value))));
+  let selectedVariantId = urlInfo.variantId || "";
+  if (!selectedVariantId && variantIds.length === 1) selectedVariantId = variantIds[0];
+  if (!selectedVariantId) {
+    const defaultVariant = variantEntries.find(entry => {
+      const parent = entry.parent ?? {};
+      return parent.isDefault === true || parent.default === true || parent.selected === true;
+    });
+    selectedVariantId = defaultVariant ? text(defaultVariant.value) : "";
+  }
+  const variantPrefix = selectedVariantId ? parentPath(variantEntries.find(entry => text(entry.value) === selectedVariantId)?.path || "") : "";
+  const inItemScope = (entry: WalkedValue) => itemPrefixes.length === 0 || itemPrefixes.some(prefix => entry.path.startsWith(prefix));
+  const scoped = values.filter(inItemScope);
+  const variantScoped = variantPrefix ? scoped.filter(entry => entry.path.startsWith(variantPrefix)) : [];
+  const preferred = [...variantScoped, ...scoped];
+
+  const findText = (patterns: RegExp[], minimum = 1) => {
+    for (const pattern of patterns) {
+      const entry = scoped.find(candidate => pattern.test(candidate.key) && typeof candidate.value === "string" && clean(candidate.value).length >= minimum && isSafeMercariProductText(candidate.value));
+      if (entry) return { value: clean(text(entry.value)), path: entry.path };
+    }
+    return { value: "", path: "" };
+  };
+
+  const name = findText([/^(?:itemName|productName)$/i, /^name$/i, /^title$/i], 3);
+  const description = findText([/^(?:itemDescription|description)$/i], 8);
+  const condition = findText([/^(?:conditionName|itemCondition|condition)$/i], 2);
+  const category = findText([/^(?:categoryName|itemCategory|category)$/i], 2);
+  const brand = findText([/^(?:brandName|itemBrand|brand)$/i], 2);
+  bundle.product.name = cleanTitle(name.value);
+  bundle.product.description = description.value;
+  bundle.product.condition = condition.value;
+  bundle.product.category = category.value;
+  bundle.product.brand = brand.value;
+  bundle.product.variantId = selectedVariantId;
+  if (name.path) bundle.paths.name = name.path;
+  if (description.path) bundle.paths.description = description.path;
+  if (condition.path) bundle.paths.condition = condition.path;
+  if (category.path) bundle.paths.category = category.path;
+  if (brand.path) bundle.paths.brand = brand.path;
+  if (selectedVariantId) bundle.paths.variantId = variantPrefix || "$derived.variant";
+
+  const priceCandidates = preferred.filter(entry => /^(?:price|itemPrice|amount|value)$/i.test(entry.key));
+  for (const entry of priceCandidates) {
+    const parent = entry.parent ?? {};
+    const currency = clean(text(parent.currencyCode ?? parent.currency_code ?? parent.currency ?? parent.priceCurrency)).toUpperCase();
+    const price = numericPrice(entry.value);
+    if (!price || !/^[A-Z]{3}$/.test(currency)) continue;
+    bundle.product.price = price;
+    bundle.product.priceCurrency = currency;
+    bundle.product.priceSource = "MERCARI_SHOPS_RSC";
+    bundle.product.priceJpy = currency === "JPY" ? Math.round(price) : null;
+    bundle.paths.price = entry.path;
+    bundle.paths.priceCurrency = `${parentPath(entry.path)}.currency`;
+    if (currency === "JPY") bundle.paths.priceJpy = entry.path;
+    break;
+  }
+
+  for (const entry of preferred) {
+    if (!/^(?:photos?|images?|imageUrls?|urls)$/i.test(entry.key)) continue;
+    const images = sanitizeMercariImages(imageValues(entry.value, baseUrl), baseUrl).filter(image => /mercari-shops-static\.com$/i.test(new URL(image).hostname));
+    if (!images.length) continue;
+    bundle.product.images = images;
+    bundle.paths.images = entry.path;
+    break;
+  }
+
+  const availabilityEntry = preferred.find(entry => /^(?:soldOut|isSoldOut|outOfStock|available|isAvailable|availability)$/i.test(entry.key));
+  if (availabilityEntry) bundle.product.availabilityStatus = availability(availabilityEntry.value);
+  if (bundle.product.availabilityStatus === "NEEDS_REVIEW") {
+    const statusEntry = preferred.find(entry => /^(?:status|saleStatus|availabilityStatus)$/i.test(entry.key) && typeof entry.value === "string");
+    if (statusEntry) bundle.product.availabilityStatus = availability(statusEntry.value);
+  }
+  if (!selectedVariantId && variantIds.length > 1) {
+    bundle.product.price = null; bundle.product.priceCurrency = ""; bundle.product.priceSource = "UNKNOWN"; bundle.product.priceJpy = null; bundle.product.images = [];
+    delete bundle.paths.price; delete bundle.paths.priceCurrency; delete bundle.paths.priceJpy; delete bundle.paths.images;
+    bundle.product.availabilityStatus = "NEEDS_REVIEW";
+  }
+  return bundle;
+}
 function isNonProductPath(path: string, value: unknown) {
   if (/\.resources\.[^.]+\.|\.translations?\.|\.i18n\.|\.locales?\./i.test(path)) return true;
   if (typeof value === "string" && /\{\{[^}]+\}\}|商品の説明$|商品の状態$|カテゴリー$|ブランド$|商品価格$/.test(value.trim())) return true;
@@ -341,55 +540,40 @@ function contextScore(parent: Record<string, unknown> | null, expectedPrice: num
 }
 
 async function extractWithMercariApi(itemId: string) {
-  if (!itemId) return { bundle: emptyBundle(), note: "mercari-api: skipped", failure: "mercari-api: missing item id", pathHits: [] as PathHit[] };
+  if (!/^m\d+$/i.test(itemId)) return { bundle: emptyBundle(), note: "mercari-api: skipped (no original m item id)", failure: "mercari-api: UUID/variant is not accepted by items/get", pathHits: [] as PathHit[] };
   const endpoint = new URL("https://api.mercari.jp/items/get");
-  const requestPayload = {
-    id: itemId, include_item_attributes: true, include_product_page_component: true,
-    include_non_ui_item_attributes: true, include_item_attributes_sections: true, include_auction: true,
-  };
+  const requestPayload = { id: itemId, include_item_attributes: true, include_product_page_component: true, include_non_ui_item_attributes: true, include_item_attributes_sections: true, include_auction: true };
   Object.entries(requestPayload).forEach(([key, value]) => endpoint.searchParams.set(key, String(value)));
+  console.info("[mercari-api-request]", { itemId, endpoint: `${endpoint.origin}${endpoint.pathname}`, queryKeys: Object.keys(requestPayload), method: "GET", xPlatform: "web" });
   console.info("[mercari-api-runtime]", { webCrypto: Boolean(globalThis.crypto?.subtle), randomUUID: typeof globalThis.crypto?.randomUUID === "function", textEncoder: typeof TextEncoder === "function" });
-
   try {
-    const dpop = await createDpopProof(endpoint.toString(), "GET");
-    const response = await fetch(endpoint, {
-      cache: "no-store",
-      headers: { accept: "application/json", "x-platform": "web", dpop, "user-agent": "Mozilla/5.0" },
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-    });
-    const contentType = response.headers.get("content-type") || "";
-    const responseText = await response.text();
-    const errorCode = response.ok ? "" : safeApiErrorCode(responseText);
-    console.info("[mercari-api-response]", { status: response.status, errorCode });
-    if (!response.ok || !contentType.includes("application/json")) {
-      return { bundle: emptyBundle(), note: `mercari-api: HTTP ${response.status}`, failure: `mercari-api: HTTP ${response.status}; ${safeBodySample(responseText)}`, pathHits: [] as PathHit[] };
+    for (let attempt = 1; attempt <= 2; attempt += 1) {
+      const dpop = await createDpopProof(endpoint.toString(), "GET");
+      const response = await fetch(endpoint, { cache: "no-store", headers: { accept: "application/json", "x-platform": "web", dpop, "user-agent": "Mozilla/5.0" }, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
+      const contentType = response.headers.get("content-type") || "";
+      const responseText = await response.text();
+      const errorCode = response.ok ? "" : safeApiErrorCode(responseText);
+      console.info("[mercari-api-response]", { itemId, attempt, dpopGenerated: true, status: response.status, errorCode, contentType, bodySample: response.ok ? "product-data" : safeBodySample(responseText) });
+      if ((response.status === 401 || response.status === 403) && attempt === 1) continue;
+      if (!response.ok || !contentType.includes("application/json")) return { bundle: emptyBundle(), note: `mercari-api: HTTP ${response.status}`, failure: `mercari-api: HTTP ${response.status}; ${safeBodySample(responseText)}`, pathHits: [] as PathHit[] };
+      const payload = JSON.parse(responseText) as { data?: Record<string, unknown> };
+      if (!payload.data) return { bundle: emptyBundle(), note: "mercari-api: empty response", failure: "mercari-api: response contained no product data", pathHits: [] as PathHit[] };
+      const data = payload.data;
+      const categoryParts = [...((data.parent_categories_ntiers as unknown[]) || []).map(text), text(pick(data, ["item_category"]))].filter(Boolean);
+      const marketplacePrice = priceValue(pick(data, ["price"]));
+      const product: ProductData = { name: cleanTitle(text(pick(data, ["name"]))), description: clean(text(pick(data, ["description"]))), price: marketplacePrice, priceCurrency: "JPY", priceSource: "MERCARI_MARKETPLACE_API", priceJpy: marketplacePrice, images: imageValues(pick(data, ["photos", "photo_paths"]), endpoint.toString()), category: Array.from(new Set(categoryParts)).join(" > "), brand: clean(text(pick(data, ["item_brand", "brand"]))), condition: clean(text(pick(data, ["item_condition"]))), availabilityStatus: availability(pick(data, ["status"])), itemKind: "MARKETPLACE", variantId: "" };
+      const paths: ProductPaths = { name: "$.data.name", priceJpy: "$.data.price", description: "$.data.description", images: "$.data.photos", condition: "$.data.item_condition", category: "$.data.parent_categories_ntiers|item_category", availabilityStatus: "$.data.status", ...(product.brand ? { brand: "$.data.item_brand" } : {}) };
+      const pathHits: PathHit[] = [
+        { path: "$.data.price", key: "price", valueType: valueType(data.price), sample: safeSample(data.price) },
+        { path: "$.data.photos", key: "photos", valueType: valueType(data.photos), sample: safeSample(data.photos) },
+        { path: "$.data.description", key: "description", valueType: valueType(data.description), sample: safeSample(data.description) },
+        { path: "$.data.item_condition", key: "item_condition", valueType: valueType(data.item_condition), sample: safeSample(data.item_condition) },
+        { path: "$.data.status", key: "status", valueType: valueType(data.status), sample: safeSample(data.status) },
+      ];
+      return { bundle: { product, paths }, note: `mercari-api: HTTP ${response.status}, product JSON found`, failure: "", pathHits };
     }
-    const payload = JSON.parse(responseText) as { data?: Record<string, unknown> };
-    if (!payload.data) return { bundle: emptyBundle(), note: "mercari-api: empty response", failure: "mercari-api: response contained no product data", pathHits: [] as PathHit[] };
-    const data = payload.data;
-    const categoryParts = [...((data.parent_categories_ntiers as unknown[]) || []).map(text), text(pick(data, ["item_category"]))].filter(Boolean);
-    const product: ProductData = {
-      name: cleanTitle(text(pick(data, ["name"]))), description: clean(text(pick(data, ["description"]))),
-      priceJpy: priceValue(pick(data, ["price"])), images: imageValues(pick(data, ["photos", "photo_paths"]), endpoint.toString()),
-      category: Array.from(new Set(categoryParts)).join(" > "), brand: clean(text(pick(data, ["item_brand", "brand"]))),
-      condition: clean(text(pick(data, ["item_condition"]))), availabilityStatus: availability(pick(data, ["status"])),
-    };
-    const paths: ProductPaths = {
-      name: "$.data.name", priceJpy: "$.data.price", description: "$.data.description", images: "$.data.photos",
-      condition: "$.data.item_condition", category: "$.data.parent_categories_ntiers|item_category", availabilityStatus: "$.data.status",
-      ...(product.brand ? { brand: "$.data.item_brand" } : {}),
-    };
-    const pathHits: PathHit[] = [
-      { path: "$.data.price", key: "price", valueType: valueType(data.price), sample: safeSample(data.price) },
-      { path: "$.data.photos", key: "photos", valueType: valueType(data.photos), sample: safeSample(data.photos) },
-      { path: "$.data.description", key: "description", valueType: valueType(data.description), sample: safeSample(data.description) },
-      { path: "$.data.item_condition", key: "item_condition", valueType: valueType(data.item_condition), sample: safeSample(data.item_condition) },
-      { path: "$.data.status", key: "status", valueType: valueType(data.status), sample: safeSample(data.status) },
-    ];
-    return { bundle: { product, paths }, note: `mercari-api: HTTP ${response.status}, product JSON found`, failure: "", pathHits };
-  } catch (error) {
-    return { bundle: emptyBundle(), note: "mercari-api: failed", failure: `mercari-api: ${safeError(error)}`, pathHits: [] as PathHit[] };
-  }
+    return { bundle: emptyBundle(), note: "mercari-api: retry exhausted", failure: "mercari-api: retry exhausted", pathHits: [] as PathHit[] };
+  } catch (error) { return { bundle: emptyBundle(), note: "mercari-api: failed", failure: `mercari-api: ${safeError(error)}`, pathHits: [] as PathHit[] }; }
 }
 
 async function createDpopProof(url: string, method: string) {
@@ -420,9 +604,9 @@ async function extractWithParsera(url: string) {
     });
     const row = records[0] || {};
     const product: ProductData = {
-      name: cleanTitle(row.originalName || ""), description: clean(row.description || ""), priceJpy: priceValue(row.priceJpy),
+      name: cleanTitle(row.originalName || ""), description: clean(row.description || ""), price: priceValue(row.priceJpy), priceCurrency: "JPY", priceSource: "PARSERA", priceJpy: priceValue(row.priceJpy),
       images: imageValues(row.imageUrls, url), condition: clean(row.condition || ""), brand: clean(row.brand || ""), category: clean(row.category || ""),
-      availabilityStatus: availability(row.availability),
+      availabilityStatus: availability(row.availability), itemKind: "MARKETPLACE", variantId: "",
     };
     return { bundle: { product, paths: {} }, note: `parsera: ${records.length} record(s) returned`, failure: "" };
   } catch (error) {
@@ -439,6 +623,11 @@ function text(value: unknown): string {
   if (Array.isArray(value)) return value.map(text).filter(Boolean).join(" > ");
   if (value && typeof value === "object") return text(pick(value as Record<string, unknown>, ["name", "title", "label", "value", "url"]));
   return "";
+}
+function numericPrice(value: unknown): number | null {
+  if (value && typeof value === "object") return numericPrice(pick(value as Record<string, unknown>, ["price", "amount", "value", "lowPrice"]));
+  const result = Number(String(value ?? "").replace(/[^\d.]/g, ""));
+  return Number.isFinite(result) && result > 0 && result < 10_000_000 ? result : null;
 }
 function priceValue(value: unknown): number | null {
   if (value && typeof value === "object") return priceValue(pick(value as Record<string, unknown>, ["price", "amount", "value", "lowPrice"]));
@@ -472,7 +661,8 @@ export function sanitizeMercariImages(images: string[], baseUrl: string) {
       if (url.toString() === new URL(baseUrl).toString()) return false;
       const hasImageExtension = /\.(?:avif|webp|png|jpe?g|gif)(?:$|\?)/i.test(url.pathname + url.search);
       const isMercariProductCdn = /mercdn\.net$/i.test(url.hostname) && /\/item\/detail\/(?:orig|photos)\//i.test(url.pathname);
-      return hasImageExtension || isMercariProductCdn;
+      const isMercariShopsImage = /mercari-shops-static\.com$/i.test(url.hostname) && /\/plain\/.+\.(?:avif|webp|png|jpe?g)@(?:avif|webp|png|jpe?g)$/i.test(url.pathname);
+      return hasImageExtension || isMercariProductCdn || isMercariShopsImage;
     } catch { return false; }
   })));
 }
@@ -487,10 +677,11 @@ function missingFields(product: ProductData) {
   return result;
 }
 function buildNotice(product: ProductData, missing: string[], challenge: boolean) {
-  if (challenge && !hasUsefulData(product)) return "تعذر جلب بيانات المنتج من Mercari في بيئة الإنتاج بسبب صفحة تحقق. يمكنك إكمال البيانات يدويًا أو المحاولة لاحقًا.";
+  if (challenge && !hasUsefulData(product)) return "تعذر تحديد معرّف المنتج أو الوصول إلى بياناته من Mercari. جرّب رابط المنتج الأصلي دون إضافات الرابط.";
   const notice = hasUsefulData(product) ? ["تم جلب البيانات للمعاينة فقط. راجعها وعدّلها قبل الحفظ."] : ["تعذر استخراج بيانات المنتج من جميع المسارات المتاحة."];
   if (missing.length) notice.push(`الحقول التي لم يُعثر عليها: ${missing.join("، ")}. سيُحفظ المنتج كمسودة تحتاج مراجعة ولن يُنشر.`);
   if (!product.images.length) notice.push("لم يتم العثور على صور منتج صالحة؛ تُركت الصور فارغة ولم يُستخدم شعار أو صورة افتراضية.");
+  if (product.itemKind === "SHOPS" && !product.variantId) notice.push("لم يمكن تحديد variant افتراضي بشكل موثوق. اختر رابطًا يحتوي على variant قبل النشر.");
   if (challenge) notice.push("أعادت Mercari صفحة تحقق أو حظر بدل صفحة المنتج.");
   return notice.join(" ");
 }

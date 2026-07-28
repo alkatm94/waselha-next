@@ -26,6 +26,12 @@ export type StoreProductPreview = {
   description: string;
   priceJpy: string;
   approxPriceSar: string;
+  originalPrice: string;
+  originalCurrency: string;
+  priceSource: string;
+  itemKind: string;
+  variantId: string;
+  sourceAvailabilityStatus: string;
   imageUrls: string;
   category: string;
   brand: string;
@@ -142,6 +148,12 @@ function fallbackPreview(originalUrl: string, fetchNotice?: string): StoreProduc
     description: "",
     priceJpy: "",
     approxPriceSar: "",
+    originalPrice: "",
+    originalCurrency: "",
+    priceSource: "",
+    itemKind: "MARKETPLACE",
+    variantId: "",
+    sourceAvailabilityStatus: "NEEDS_REVIEW",
     imageUrls: "",
     category: "",
     brand: "",
@@ -168,6 +180,12 @@ export async function previewStoreProductFromUrl(originalUrl: string): Promise<S
     description: imported.description,
     priceJpy: imported.priceJpy?.toString() || "",
     approxPriceSar: imported.approxPriceSar?.toString() || "",
+    originalPrice: imported.price?.toString() || "",
+    originalCurrency: imported.priceCurrency,
+    priceSource: imported.priceSource,
+    itemKind: imported.itemKind,
+    variantId: imported.selectedVariantId,
+    sourceAvailabilityStatus: imported.sourceAvailabilityStatus,
     imageUrls: imported.images.join("\n"),
     category: imported.category,
     brand: imported.brand,
