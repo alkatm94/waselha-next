@@ -16,6 +16,7 @@ export type PurchaseOrderStatus = (typeof PURCHASE_ORDER_STATUSES)[number]["valu
 const statusValues = new Set<string>(PURCHASE_ORDER_STATUSES.map((status) => status.value));
 
 export function getPurchaseOrderStatusLabel(status: string) {
+  if (status === "PAID") return "مدفوع";
   return PURCHASE_ORDER_STATUSES.find((item) => item.value === status)?.label || status;
 }
 

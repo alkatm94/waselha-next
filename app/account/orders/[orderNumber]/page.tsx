@@ -1,8 +1,9 @@
-﻿import Image from "next/image";
+import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { CalendarDays } from "lucide-react";
 import { DashboardShell } from "@/components/account/DashboardShell";
+import { PaylinkPaymentActions } from "@/components/account/PaylinkPaymentActions";
 import { ProductImagePlaceholder, ProductLinkButton, cleanProductTitle } from "@/components/account/ShipmentUI";
 import { requireCustomer } from "@/lib/auth";
 import { getCustomerShipmentStats } from "@/lib/shipments";
@@ -55,6 +56,13 @@ export default async function CustomerOrderDetailPage({ params }: { params: Para
           </div>
 
           <aside className="grid content-start gap-5">
+            {(order.status === "QUOTED" || order.status === "PAID" || order.paymentStatus !== "UNPAID") && <section className="rounded-lg border border-[var(--border)] bg-white p-5 shadow-sm">
+              <h2 className="text-xl font-bold text-[var(--brand-navy)]">الدفع</h2>
+              <div className="mt-4 rounded-lg bg-[var(--background)] p-4"><p className="text-xs font-bold text-[var(--text-secondary)]">المبلغ المطلوب</p><p className="mt-1 text-2xl font-bold text-[var(--brand-navy)]">{formatMoney(order.finalTotal)}</p></div>
+              <p className="my-4 text-sm font-semibold leading-7 text-[var(--text-secondary)]">يتم الدفع في صفحة Paylink الآمنة، ولا نجمع بيانات البطاقة داخل موقعنا.</p>
+              <PaylinkPaymentActions orderNumber={order.orderNumber} paymentStatus={order.paymentStatus} paymentUrl={order.paylinkPaymentUrl} />
+              {order.paymentStatus === "PAID" && <div className="mt-4 grid gap-2 text-sm font-semibold"><p>وسيلة الدفع: {order.paymentMethod || "غير محددة"}</p><p>تاريخ الدفع: {order.paidAt?.toLocaleString("ar-SA") || "-"}</p>{order.paymentReceiptUrl && <a href={order.paymentReceiptUrl} target="_blank" rel="noreferrer" className="font-bold text-[var(--brand-navy)] underline">فتح الإيصال</a>}</div>}
+            </section>}
             <section className="rounded-lg border border-[var(--border)] bg-white p-5 shadow-sm">
               <h2 className="text-xl font-bold text-[var(--brand-navy)]">ملاحظة الإدارة</h2>
               <p className="mt-3 whitespace-pre-wrap text-sm font-medium leading-7 text-[var(--text-primary)]">{order.customerNote || "لا توجد ملاحظة بعد."}</p>
@@ -71,6 +79,7 @@ function OrderStatusBadge({ status }: { status: string }) {
   const tone: Record<string, string> = {
     PENDING_REVIEW: "bg-[var(--warning-bg)] text-[var(--warning)] border-[var(--warning-bg)]",
     QUOTED: "bg-[var(--info-bg)] text-[var(--info)] border-[var(--info-bg)]",
+    PAID: "bg-[var(--success-bg)] text-[var(--success)] border-[var(--success-bg)]",
     APPROVED: "bg-[var(--success-bg)] text-[var(--success)] border-[var(--success-bg)]",
     REJECTED: "bg-[var(--danger-bg)] text-[var(--danger)] border-[var(--danger-bg)]",
     CANCELLED: "bg-[var(--surface-muted)] text-[var(--text-secondary)] border-[var(--border)]",

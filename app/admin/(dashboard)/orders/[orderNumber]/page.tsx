@@ -1,11 +1,13 @@
-﻿import Image from "next/image";
+import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { revalidatePath } from "next/cache";
 import { Calculator, ExternalLink, History, ShieldCheck } from "lucide-react";
 import { requireAdmin } from "@/lib/admin-auth";
 import { AdminNotificationBell } from "@/components/admin/AdminNotificationBell";
 import { ProductImagePlaceholder } from "@/components/account/ShipmentUI";
 import { PURCHASE_ORDER_STATUSES, formatMoney, getAdminPurchaseOrder, getPurchaseOrderStatusLabel, updatePurchaseOrderQuote } from "@/lib/purchase-orders";
+import { reconcilePayment } from "@/lib/payments/payment-service";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "مراجعة طلب الشراء | وصلها لي" };
@@ -17,6 +19,15 @@ export default async function AdminOrderPage({ params }: { params: Params }) {
   const { orderNumber } = await params;
   const order = await getAdminPurchaseOrder(orderNumber);
   if (!order) notFound();
+  const paymentTransactionNo = order.paylinkTransactionNo;
+  const currentOrderNumber = order.orderNumber;
+
+  async function verifyPaymentAction() {
+    "use server";
+    await requireAdmin();
+    if (paymentTransactionNo) await reconcilePayment(paymentTransactionNo, "manual-check");
+    revalidatePath(`/admin/orders/${currentOrderNumber}`);
+  }
 
   async function updateAction(formData: FormData) {
     "use server";
@@ -80,6 +91,24 @@ export default async function AdminOrderPage({ params }: { params: Params }) {
 
         <aside className="grid content-start gap-6">
           <section className="rounded-lg border border-[var(--border)] bg-white p-5 shadow-sm">
+            <h2 className="text-xl font-bold text-[var(--brand-navy)]">بيانات الدفع</h2>
+            <div className="mt-4 grid gap-2 text-sm font-semibold">
+              <Summary label="الحالة" value={order.paymentStatus} />
+              <Summary label="المبلغ المطلوب" value={formatMoney(order.finalTotal)} />
+              <Summary label="المبلغ المدفوع" value={formatMoney(order.paidAmount)} />
+              <Summary label="رقم Paylink" value={order.paylinkTransactionNo || "-"} />
+              <Summary label="إنشاء الرابط" value={order.paymentCreatedAt?.toLocaleString("ar-SA") || "-"} />
+              <Summary label="تاريخ الدفع" value={order.paidAt?.toLocaleString("ar-SA") || "-"} />
+              <Summary label="وسيلة الدفع" value={order.paymentMethod || "-"} />
+            </div>
+            {order.paymentFailureReason && <p className="mt-3 rounded-lg bg-[var(--danger-bg)] p-3 text-sm font-bold text-[var(--danger)]">تعذر إكمال آخر تحقق: {order.paymentFailureReason}</p>}
+            <div className="mt-4 flex flex-wrap gap-2">
+              {order.paylinkTransactionNo && order.paymentStatus !== "PAID" && <form action={verifyPaymentAction}><button className="h-10 rounded-lg bg-[var(--brand-navy)] px-4 text-sm font-bold text-white">التحقق من الدفع</button></form>}
+              {order.paylinkPaymentUrl && <a href={order.paylinkPaymentUrl} target="_blank" rel="noreferrer" className="inline-flex h-10 items-center rounded-lg border border-[var(--border)] px-4 text-sm font-bold text-[var(--brand-navy)]">فتح رابط الدفع</a>}
+              {order.paymentReceiptUrl && <a href={order.paymentReceiptUrl} target="_blank" rel="noreferrer" className="inline-flex h-10 items-center rounded-lg border border-[var(--border)] px-4 text-sm font-bold text-[var(--brand-navy)]">فتح الإيصال</a>}
+            </div>
+          </section>
+          <section className="rounded-lg border border-[var(--border)] bg-white p-5 shadow-sm">
             <h2 className="text-xl font-bold text-[var(--brand-navy)]">ملخص السعر</h2>
             <div className="mt-4 grid gap-2 text-sm font-bold text-[var(--text-secondary)]">
               <Summary label="سعر المنتج" value={formatMoney(order.quotedProductPrice)} />
@@ -107,6 +136,7 @@ function OrderStatusBadge({ status }: { status: string }) {
   const tone: Record<string, string> = {
     PENDING_REVIEW: "bg-[var(--warning-bg)] text-[var(--warning)] border-[var(--warning-bg)]",
     QUOTED: "bg-[var(--info-bg)] text-[var(--info)] border-[var(--info-bg)]",
+    PAID: "bg-[var(--success-bg)] text-[var(--success)] border-[var(--success-bg)]",
     APPROVED: "bg-[var(--success-bg)] text-[var(--success)] border-[var(--success-bg)]",
     REJECTED: "bg-[var(--danger-bg)] text-[var(--danger)] border-[var(--danger-bg)]",
     CANCELLED: "bg-[var(--surface-muted)] text-[var(--text-secondary)] border-[var(--border)]",
